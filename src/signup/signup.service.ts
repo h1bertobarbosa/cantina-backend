@@ -18,7 +18,6 @@ export class SignupService {
     const client = await this.postgresService.getClient();
 
     try {
-      // TODO: Check if exists
       const res = await client.query(
         'SELECT count(id) FROM accounts WHERE document = $1',
         [createSignupDto.companyDocument],

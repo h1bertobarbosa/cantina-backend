@@ -1,4 +1,9 @@
-import { PartialType } from '@nestjs/mapped-types';
-import { CreateSigninDto } from './create-signin.dto';
+import { ApiProperty } from '@nestjs/swagger';
 
-export class UpdateSigninDto extends PartialType(CreateSigninDto) {}
+export class OutputSigninDto {
+  @ApiProperty()
+  accessToken: string;
+  constructor(accessToken: string) {
+    this.accessToken = accessToken;
+  }
+}

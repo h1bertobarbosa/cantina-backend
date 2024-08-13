@@ -5,7 +5,10 @@ import { Pool } from 'pg';
 export class PostgresService {
   constructor(@Inject('PG_POOL') private readonly pool: Pool) {}
 
-  async query(queryText: string, params?: unknown[]): Promise<unknown[]> {
+  async query<T = unknown>(
+    queryText: string,
+    params?: unknown[],
+  ): Promise<T[]> {
     const client = await this.pool.connect();
     try {
       const res = await client.query(queryText, params);

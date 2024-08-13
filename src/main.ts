@@ -19,3 +19,7 @@ async function bootstrap() {
   await app.listen(3000);
 }
 bootstrap();
+/*
+"email": "humberto.obarbosa@gmail.com",
+  "password": "xgmy01Hob@"
+  */
