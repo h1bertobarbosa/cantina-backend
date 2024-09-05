@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { CreateClientDto } from './dto/create-client.dto';
 // import { UpdateClientDto } from './dto/update-client.dto';
 import {
@@ -16,6 +16,10 @@ export interface ClientTable {
   phone: string;
   created_at: Date;
   updated_at: Date;
+}
+export interface InputGetById {
+  id: string;
+  accountId: string;
 }
 @Injectable()
 export class ClientsService {
@@ -61,6 +65,17 @@ export class ClientsService {
         total: row[0]['count'],
       },
     };
+  }
+
+  async findOne({ id, accountId }: InputGetById) {
+    const [product] = await this.postgresService.query<ClientTable>(
+      `SELECT * FROM clients WHERE id = $1`,
+      [id],
+    );
+    if (!product || product.account_id !== accountId) {
+      throw new NotFoundException('Client not found');
+    }
+    return new OutputClientDto(product);
   }
   /**
    * 

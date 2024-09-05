@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, Query } from '@nestjs/common';
+import { Controller, Post, Body, Get, Query, Param } from '@nestjs/common';
 import { ClientsService } from './clients.service';
 import { CreateClientDto } from './dto/create-client.dto';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -31,13 +31,14 @@ export class ClientsController {
     });
   }
 
+  @Get(':id')
+  findOne(@User() user: UserSession, @Param('id') id: string) {
+    return this.clientsService.findOne({ id, accountId: user.accountId });
+  }
   /**
    * 
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.clientsService.findOne(+id);
-  }
+ 
 
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateClientDto: UpdateClientDto) {
