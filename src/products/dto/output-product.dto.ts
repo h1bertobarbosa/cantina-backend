@@ -14,7 +14,7 @@ export class OutputProductDto {
   updatedAt: Date;
 
   constructor(product: ProductTable) {
-    this.id = product.external_id;
+    this.id = product.id;
     this.name = product.name;
     this.price = product.price;
     this.createdAt = product.created_at;

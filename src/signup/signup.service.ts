@@ -6,6 +6,10 @@ import {
   HASHING_PROVIDER,
   HashingProvider,
 } from 'src/libs/src/hashing/contract/hashing-provider.interface';
+import {
+  GUID_PROVIDER,
+  GuidProvider,
+} from 'src/libs/src/guid/contract/guid-provider.interface';
 
 @Injectable()
 export class SignupService {
@@ -13,6 +17,8 @@ export class SignupService {
     private readonly postgresService: PostgresService,
     @Inject(HASHING_PROVIDER)
     private readonly hashingProvider: HashingProvider,
+    @Inject(GUID_PROVIDER)
+    private readonly guidProvider: GuidProvider,
   ) {}
   async create(createSignupDto: CreateSignupDto): Promise<OutputSignupDto> {
     const client = await this.postgresService.getClient();
@@ -29,8 +35,9 @@ export class SignupService {
       await client.query('BEGIN');
 
       const resAccount = await client.query(
-        'INSERT INTO accounts (name, email, document) VALUES ($1, $2, $3) RETURNING *',
+        'INSERT INTO accounts (id,name, email, document) VALUES ($1, $2, $3, $4) RETURNING *',
         [
+          this.guidProvider.generate(),
           createSignupDto.companyName,
           createSignupDto.compantEmail,
           createSignupDto.companyDocument,
@@ -38,8 +45,9 @@ export class SignupService {
       );
 
       const resUser = await client.query(
-        'INSERT INTO users(account_id, name, email,password) VALUES ($1, $2,$3,$4) RETURNING *',
+        'INSERT INTO users(id, account_id, name, email,password) VALUES ($1, $2,$3,$4, $5) RETURNING *',
         [
+          this.guidProvider.generate(),
           resAccount.rows[0].id,
           createSignupDto.name,
           createSignupDto.email,
@@ -49,7 +57,7 @@ export class SignupService {
       await client.query('COMMIT');
 
       return {
-        id: resUser.rows[0].external_id,
+        id: resUser.rows[0].id,
         companyName: createSignupDto.companyName,
         compantEmail: createSignupDto.compantEmail,
         companyDocument: createSignupDto.companyDocument,

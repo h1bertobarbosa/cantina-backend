@@ -11,19 +11,14 @@ exports.shorthands = undefined;
 exports.up = (pgm) => {
   pgm.createTable('products', {
     id: {
-      type: 'bigserial',
+      type: 'uuid',
       primaryKey: true,
     },
     account_id: {
-      type: 'bigint',
+      type: 'uuid',
       notNull: true,
       references: 'accounts',
       onDelete: 'cascade',
-    },
-    external_id: {
-      type: 'uuid',
-      notNull: true,
-      default: pgm.func('gen_random_uuid()'),
     },
     name: {
       type: 'varchar(150)',
@@ -44,7 +39,7 @@ exports.up = (pgm) => {
       default: pgm.func('current_timestamp'),
     },
   });
-  pgm.createIndex('products', ['account_id', 'external_id']);
+  pgm.createIndex('products', 'account_id');
 };
 
 /**

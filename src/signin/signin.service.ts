@@ -44,7 +44,6 @@ export class SigninService {
     }
     const payload = {
       sub: user.id,
-      externalId: user.external_id,
       accountId: user.account_id,
       email: user.email,
       name: user.name,

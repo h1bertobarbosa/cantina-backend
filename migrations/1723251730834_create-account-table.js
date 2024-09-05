@@ -11,13 +11,8 @@ exports.shorthands = undefined;
 exports.up = (pgm) => {
   pgm.createTable('accounts', {
     id: {
-      type: 'bigserial',
-      primaryKey: true,
-    },
-    external_id: {
       type: 'uuid',
-      notNull: true,
-      default: pgm.func('gen_random_uuid()'),
+      primaryKey: true,
     },
     name: {
       type: 'varchar(150)',
@@ -42,7 +37,6 @@ exports.up = (pgm) => {
       default: pgm.func('current_timestamp'),
     },
   });
-  pgm.createIndex('accounts', 'external_id', { method: 'hash' });
   pgm.createIndex('accounts', 'document', { unique: true });
 };
 

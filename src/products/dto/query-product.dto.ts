@@ -20,7 +20,7 @@ export class QueryProductDto {
   @ApiPropertyOptional()
   @IsOptional()
   orderDir?: 'asc' | 'desc';
-  accountId: number;
+  accountId: string;
   constructor(partial: Partial<QueryProductDto>) {
     Object.assign(this, partial);
     this.perPage = this.perPage || 10;
