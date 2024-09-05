@@ -7,6 +7,7 @@ import {
 } from 'src/libs/src/guid/contract/guid-provider.interface';
 import { PostgresService } from 'src/postgres/postgres.service';
 import { OutputClientDto } from './dto/output-client.dto';
+import { QueryClientDto } from './dto/query-client.dto';
 export interface ClientTable {
   id: string;
   account_id: string;
@@ -35,11 +36,34 @@ export class ClientsService {
     );
     return new OutputClientDto(newClient);
   }
+  async findAll(input: QueryClientDto) {
+    const [clients, row] = await Promise.all([
+      this.postgresService.query<ClientTable>(
+        'SELECT * FROM clients WHERE account_id = $1 ORDER BY $2 LIMIT $3 OFFSET $4',
+        [
+          Number(input.accountId),
+          `${input.orderBy} ${input.orderDir.toUpperCase()}`,
+          input.perPage,
+          (input.page - 1) * input.perPage,
+        ],
+      ),
+      this.postgresService.query<ClientTable>(
+        'SELECT COUNT(*) FROM clients WHERE account_id = $1',
+        [Number(input.accountId)],
+      ),
+    ]);
 
-  /**
-   * findAll() {
-    return `This action returns all clients`;
+    return {
+      data: clients.map((product) => new OutputClientDto(product)),
+      meta: {
+        page: input.page,
+        perPage: input.perPage,
+        total: row[0]['count'],
+      },
+    };
   }
+  /**
+   * 
 
   findOne(id: number) {
     return `This action returns a #${id} client`;

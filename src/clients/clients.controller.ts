@@ -1,8 +1,9 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, Get, Query } from '@nestjs/common';
 import { ClientsService } from './clients.service';
 import { CreateClientDto } from './dto/create-client.dto';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { User, UserSession } from 'src/signin/decorators/user.decorator';
+import { QueryClientDto } from './dto/query-client.dto';
 // import { UpdateClientDto } from './dto/update-client.dto';
 
 @ApiBearerAuth()
@@ -22,11 +23,16 @@ export class ClientsController {
     });
   }
 
-  /**
-   * @Get()
-  findAll() {
-    return this.clientsService.findAll();
+  @Get()
+  async findAll(@User() user: UserSession, @Query() query: QueryClientDto) {
+    return this.clientsService.findAll({
+      ...query,
+      accountId: user.accountId,
+    });
   }
+
+  /**
+   * 
 
   @Get(':id')
   findOne(@Param('id') id: string) {
