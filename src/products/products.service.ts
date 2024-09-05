@@ -45,7 +45,7 @@ export class ProductsService {
       this.postgresService.query<ProductTable>(
         'SELECT * FROM products WHERE account_id = $1 ORDER BY $2 LIMIT $3 OFFSET $4',
         [
-          Number(input.accountId),
+          input.accountId,
           `${input.orderBy} ${input.orderDir.toUpperCase()}`,
           input.perPage,
           (input.page - 1) * input.perPage,
@@ -53,7 +53,7 @@ export class ProductsService {
       ),
       this.postgresService.query<ProductTable>(
         'SELECT COUNT(*) FROM products WHERE account_id = $1',
-        [Number(input.accountId)],
+        [input.accountId],
       ),
     ]);
 
@@ -69,10 +69,10 @@ export class ProductsService {
 
   async findOne({ id, accountId }: InputGetById) {
     const [product] = await this.postgresService.query<ProductTable>(
-      `SELECT * FROM products WHERE id = $1 AND account_id = $2`,
-      [id, accountId],
+      `SELECT * FROM products WHERE id = $1`,
+      [id],
     );
-    if (!product) {
+    if (!product || product.account_id !== accountId) {
       throw new NotFoundException('Product not found');
     }
     return new OutputProductDto(product);

@@ -1,10 +1,19 @@
-import { Controller, Post, Body, Get, Query, Param } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  Query,
+  Param,
+  Put,
+  Delete,
+} from '@nestjs/common';
 import { ClientsService } from './clients.service';
 import { CreateClientDto } from './dto/create-client.dto';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { User, UserSession } from 'src/signin/decorators/user.decorator';
 import { QueryClientDto } from './dto/query-client.dto';
-// import { UpdateClientDto } from './dto/update-client.dto';
+import { UpdateClientDto } from './dto/update-client.dto';
 
 @ApiBearerAuth()
 @ApiTags('clients')
@@ -35,19 +44,17 @@ export class ClientsController {
   findOne(@User() user: UserSession, @Param('id') id: string) {
     return this.clientsService.findOne({ id, accountId: user.accountId });
   }
-  /**
-   * 
 
- 
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateClientDto: UpdateClientDto) {
-    return this.clientsService.update(+id, updateClientDto);
+  @Put(':id')
+  async update(
+    @User() user: UserSession,
+    @Param('id') id: string,
+    @Body() updateClientDto: UpdateClientDto,
+  ) {
+    return this.clientsService.update({
+      ...updateClientDto,
+      id,
+      accountId: user.accountId,
+    });
   }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.clientsService.remove(+id);
-  }
-   */
 }

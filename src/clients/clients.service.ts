@@ -8,6 +8,7 @@ import {
 import { PostgresService } from 'src/postgres/postgres.service';
 import { OutputClientDto } from './dto/output-client.dto';
 import { QueryClientDto } from './dto/query-client.dto';
+import { UpdateClientDto } from './dto/update-client.dto';
 export interface ClientTable {
   id: string;
   account_id: string;
@@ -45,7 +46,7 @@ export class ClientsService {
       this.postgresService.query<ClientTable>(
         'SELECT * FROM clients WHERE account_id = $1 ORDER BY $2 LIMIT $3 OFFSET $4',
         [
-          Number(input.accountId),
+          input.accountId,
           `${input.orderBy} ${input.orderDir.toUpperCase()}`,
           input.perPage,
           (input.page - 1) * input.perPage,
@@ -53,7 +54,7 @@ export class ClientsService {
       ),
       this.postgresService.query<ClientTable>(
         'SELECT COUNT(*) FROM clients WHERE account_id = $1',
-        [Number(input.accountId)],
+        [input.accountId],
       ),
     ]);
 
@@ -68,14 +69,29 @@ export class ClientsService {
   }
 
   async findOne({ id, accountId }: InputGetById) {
-    const [product] = await this.postgresService.query<ClientTable>(
+    const [client] = await this.postgresService.query<ClientTable>(
       `SELECT * FROM clients WHERE id = $1`,
       [id],
     );
-    if (!product || product.account_id !== accountId) {
+    if (!client || client.account_id !== accountId) {
       throw new NotFoundException('Client not found');
     }
-    return new OutputClientDto(product);
+    return new OutputClientDto(client);
+  }
+
+  async update(updateProductDto: UpdateClientDto) {
+    const row = await this.postgresService.query<ClientTable>(
+      `UPDATE clients SET name = $1, phone = $2, updated_at = $3, email = $4 WHERE id = $5 AND account_id = $6 RETURNING *`,
+      [
+        updateProductDto.name,
+        updateProductDto.phone,
+        new Date(),
+        updateProductDto.email,
+        updateProductDto.id,
+        updateProductDto.accountId,
+      ],
+    );
+    return new OutputClientDto(row[0]);
   }
   /**
    * 
