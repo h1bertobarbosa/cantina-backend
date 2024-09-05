@@ -7,6 +7,8 @@ import {
   Param,
   Put,
   Delete,
+  HttpStatus,
+  HttpCode,
 } from '@nestjs/common';
 import { ClientsService } from './clients.service';
 import { CreateClientDto } from './dto/create-client.dto';
@@ -33,6 +35,7 @@ export class ClientsController {
   }
 
   @Get()
+  @HttpCode(HttpStatus.PARTIAL_CONTENT)
   async findAll(@User() user: UserSession, @Query() query: QueryClientDto) {
     return this.clientsService.findAll({
       ...query,
@@ -56,5 +59,10 @@ export class ClientsController {
       id,
       accountId: user.accountId,
     });
+  }
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async remove(@User() user: UserSession, @Param('id') id: string) {
+    await this.clientsService.remove({ id, accountId: user.accountId });
   }
 }

@@ -93,19 +93,10 @@ export class ClientsService {
     );
     return new OutputClientDto(row[0]);
   }
-  /**
-   * 
-
-  findOne(id: number) {
-    return `This action returns a #${id} client`;
+  async remove({ id, accountId }: InputGetById) {
+    await this.postgresService.query<ClientTable>(
+      `DELETE FROM clients WHERE id = $1 AND account_id = $2`,
+      [id, accountId],
+    );
   }
-
-  update(id: number, updateClientDto: UpdateClientDto) {
-    return `This action updates a #${id} client`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} client`;
-  }
-   */
 }

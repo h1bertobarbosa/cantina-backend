@@ -79,8 +79,8 @@ export class ProductsService {
   }
 
   async update(updateProductDto: UpdateProductDto) {
-    await this.postgresService.query<ProductTable>(
-      `UPDATE products SET name = $1, price = $2, updated_at = $3 WHERE id = $4 AND account_id = $5`,
+    const row = await this.postgresService.query<ProductTable>(
+      `UPDATE products SET name = $1, price = $2, updated_at = $3 WHERE id = $4 AND account_id = $5 RETURNING *`,
       [
         updateProductDto.name,
         updateProductDto.price,
@@ -89,6 +89,7 @@ export class ProductsService {
         updateProductDto.accountId,
       ],
     );
+    return new OutputProductDto(row[0]);
   }
 
   async remove({ id, accountId }: InputGetById) {

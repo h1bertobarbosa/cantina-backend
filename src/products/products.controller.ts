@@ -7,6 +7,8 @@ import {
   Param,
   Delete,
   Query,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -35,6 +37,7 @@ export class ProductsController {
   }
 
   @Get()
+  @HttpCode(HttpStatus.PARTIAL_CONTENT)
   async findAll(@User() user: UserSession, @Query() query: QueryProductDto) {
     return this.productsService.findAll({
       ...query,
@@ -61,6 +64,7 @@ export class ProductsController {
   }
 
   @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@User() user: UserSession, @Param('id') id: string) {
     await this.productsService.remove({ id, accountId: user.accountId });
   }
