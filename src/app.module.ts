@@ -5,6 +5,7 @@ import { PostgresModule } from './postgres/postgres.module';
 import { SigninModule } from './signin/signin.module';
 import { SignupModule } from './signup/signup.module';
 import { ConfigModule } from '@nestjs/config';
+import { ProductsModule } from './products/products.module';
 import jwtConfig from './signin/config/jwt.config';
 import pgConfig from './postgres/config/pg.config';
 
@@ -18,6 +19,7 @@ import pgConfig from './postgres/config/pg.config';
     PostgresModule.forRoot(pgConfig()),
     SigninModule,
     SignupModule,
+    ProductsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

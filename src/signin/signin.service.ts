@@ -43,7 +43,8 @@ export class SigninService {
       throw new UnauthorizedException('User or password invalid');
     }
     const payload = {
-      sub: user.external_id,
+      sub: user.id,
+      externalId: user.external_id,
       accountId: user.account_id,
       email: user.email,
       name: user.name,

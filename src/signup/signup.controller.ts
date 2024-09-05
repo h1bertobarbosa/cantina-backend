@@ -3,9 +3,11 @@ import { SignupService } from './signup.service';
 import { CreateSignupDto } from './dto/create-signup.dto';
 import { ApiCreatedResponse, ApiTags } from '@nestjs/swagger';
 import { OutputSignupDto } from './dto/output-signup.dto';
+import { Public } from 'src/signin/decorators/public.decorator';
 
 @Controller('signup')
 @ApiTags('Signup')
+@Public()
 export class SignupController {
   constructor(private readonly signupService: SignupService) {}
 

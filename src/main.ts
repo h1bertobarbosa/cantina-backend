@@ -13,6 +13,7 @@ async function bootstrap() {
     .setDescription('The cantina API description')
     .setVersion('1.0')
     .addTag('cantina')
+    .addBearerAuth()
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('swagger', app, document);
@@ -22,4 +23,6 @@ bootstrap();
 /*
 "email": "humberto.obarbosa@gmail.com",
   "password": "xgmy01Hob@"
+
+  eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZXh0ZXJuYWxJZCI6IjI3ZWE1NjUyLTBiOTAtNDVjMS05MGMzLWQxOTY1Zjk5NGRkYiIsImFjY291bnRJZCI6IjEiLCJlbWFpbCI6Imh1bWJlcnRvLm9iYXJib3NhQGdtYWlsLmNvbSIsIm5hbWUiOiJodW1iZXJ0byIsImlhdCI6MTcyNTQ5MzIzNn0.Q44XMyo3o-zbuJmAN92WuPUxdBmhcrw8YwOZ5powPRE
   */
