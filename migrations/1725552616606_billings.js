@@ -9,15 +9,21 @@ exports.shorthands = undefined;
  * @returns {Promise<void> | void}
  */
 exports.up = (pgm) => {
-  pgm.createTable('billing_items', {
+  pgm.createTable('billings', {
     id: {
       type: 'uuid',
       primaryKey: true,
     },
-    billing_id: {
+    account_id: {
       type: 'uuid',
       notNull: true,
-      references: 'billings',
+      references: 'accounts',
+      onDelete: 'cascade',
+    },
+    client_id: {
+      type: 'uuid',
+      notNull: true,
+      references: 'clients',
       onDelete: 'cascade',
     },
     description: {
@@ -28,11 +34,15 @@ exports.up = (pgm) => {
       type: 'decimal(6,2)',
       notNull: true,
     },
-    status: {
-      type: 'varchar(15)',
+    amount: {
+      type: 'decimal(6,2)',
       notNull: true,
     },
-    payment_method: {
+    quantity: {
+      type: 'integer',
+      notNull: true,
+    },
+    status: {
       type: 'varchar(15)',
       notNull: true,
     },
@@ -46,9 +56,14 @@ exports.up = (pgm) => {
       notNull: true,
       default: pgm.func('current_timestamp'),
     },
+    payed_at: {
+      type: 'timestamptz',
+      default: pgm.func('current_timestamp'),
+    },
   });
-  pgm.createIndex('billing_items', 'billing_id');
-  pgm.createIndex('billing_items', 'status');
+  pgm.createIndex('billings', 'account_id');
+  pgm.createIndex('billings', 'client_id');
+  pgm.createIndex('billings', 'status');
 };
 
 /**
@@ -57,5 +72,5 @@ exports.up = (pgm) => {
  * @returns {Promise<void> | void}
  */
 exports.down = (pgm) => {
-  pgm.dropTable('billing_items');
+  pgm.dropTable('billings');
 };

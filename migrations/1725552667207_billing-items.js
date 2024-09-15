@@ -9,32 +9,32 @@ exports.shorthands = undefined;
  * @returns {Promise<void> | void}
  */
 exports.up = (pgm) => {
-  pgm.createTable('billings', {
+  pgm.createTable('billing_items', {
     id: {
       type: 'uuid',
       primaryKey: true,
     },
-    account_id: {
+    transaction_id: {
       type: 'uuid',
       notNull: true,
-      references: 'accounts',
+      references: 'transactions',
       onDelete: 'cascade',
     },
-    client_id: {
+    billing_id: {
       type: 'uuid',
       notNull: true,
-      references: 'clients',
+      references: 'billings',
       onDelete: 'cascade',
     },
     description: {
       type: 'varchar(150)',
       notNull: true,
     },
-    amount: {
+    value: {
       type: 'decimal(6,2)',
       notNull: true,
     },
-    status: {
+    payment_method: {
       type: 'varchar(15)',
       notNull: true,
     },
@@ -48,14 +48,9 @@ exports.up = (pgm) => {
       notNull: true,
       default: pgm.func('current_timestamp'),
     },
-    payed_at: {
-      type: 'timestamptz',
-      default: pgm.func('current_timestamp'),
-    },
   });
-  pgm.createIndex('billings', 'account_id');
-  pgm.createIndex('billings', 'client_id');
-  pgm.createIndex('billings', 'status');
+  pgm.createIndex('billing_items', 'billing_id');
+  pgm.createIndex('billing_items', 'transaction_id');
 };
 
 /**
@@ -64,5 +59,5 @@ exports.up = (pgm) => {
  * @returns {Promise<void> | void}
  */
 exports.down = (pgm) => {
-  pgm.dropTable('billings');
+  pgm.dropTable('billing_items');
 };
