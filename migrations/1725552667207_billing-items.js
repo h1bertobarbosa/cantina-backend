@@ -26,18 +26,6 @@ exports.up = (pgm) => {
       references: 'billings',
       onDelete: 'cascade',
     },
-    description: {
-      type: 'varchar(150)',
-      notNull: true,
-    },
-    value: {
-      type: 'decimal(6,2)',
-      notNull: true,
-    },
-    payment_method: {
-      type: 'varchar(15)',
-      notNull: true,
-    },
     created_at: {
       type: 'timestamptz',
       notNull: true,

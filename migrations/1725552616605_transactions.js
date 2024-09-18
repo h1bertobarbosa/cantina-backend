@@ -30,6 +30,10 @@ exports.up = (pgm) => {
       type: 'varchar(150)',
       notNull: true,
     },
+    payment_method: {
+      type: 'varchar(15)',
+      notNull: true,
+    },
     amount: {
       type: 'decimal(6,2)',
       notNull: true,
@@ -50,6 +54,7 @@ exports.up = (pgm) => {
   });
   pgm.createIndex('transactions', 'account_id');
   pgm.createIndex('transactions', 'client_id');
+  pgm.createIndex('transactions', 'payed_at');
 };
 
 /**

@@ -26,24 +26,16 @@ exports.up = (pgm) => {
       references: 'clients',
       onDelete: 'cascade',
     },
+    payment_method: {
+      type: 'varchar(15)',
+      notNull: true,
+    },
     description: {
       type: 'varchar(150)',
       notNull: true,
     },
-    value: {
-      type: 'decimal(6,2)',
-      notNull: true,
-    },
     amount: {
       type: 'decimal(6,2)',
-      notNull: true,
-    },
-    quantity: {
-      type: 'integer',
-      notNull: true,
-    },
-    status: {
-      type: 'varchar(15)',
       notNull: true,
     },
     created_at: {
@@ -63,7 +55,7 @@ exports.up = (pgm) => {
   });
   pgm.createIndex('billings', 'account_id');
   pgm.createIndex('billings', 'client_id');
-  pgm.createIndex('billings', 'status');
+  pgm.createIndex('billings', 'payed_at');
 };
 
 /**
