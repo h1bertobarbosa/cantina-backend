@@ -11,6 +11,7 @@ import { SalesModule } from './sales/sales.module';
 import { TransactionsModule } from './transactions/transactions.module';
 import jwtConfig from './signin/config/jwt.config';
 import pgConfig from './postgres/config/pg.config';
+import { LoggerModule } from './logger/logger.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import pgConfig from './postgres/config/pg.config';
     ClientsModule,
     SalesModule,
     TransactionsModule,
+    LoggerModule,
   ],
   controllers: [AppController],
   providers: [AppService],

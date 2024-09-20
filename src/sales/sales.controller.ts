@@ -35,8 +35,8 @@ export class SalesController {
   }
 
   @Get()
-  findAll() {
-    return this.salesService.findAll();
+  async findAll(@User() user: UserSession) {
+    return this.salesService.findAll(user.accountId);
   }
 
   @Get(':id')

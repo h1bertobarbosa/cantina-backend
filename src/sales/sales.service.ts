@@ -1,22 +1,31 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { CreateSaleDto } from './dto/create-sale.dto';
+import { Injectable } from '@nestjs/common';
 import { UpdateSaleDto } from './dto/update-sale.dto';
-import {
-  SALES_REPOSITORY,
-  SalesRepository,
-} from './repository/ports/sales-repository.interface';
+
+import { PostgresService } from 'src/postgres/postgres.service';
+import OutputSaleDto from './dto/output-sale.dto';
+import { TransactionTable } from 'src/transactions/repository/pg-transactions.repository';
 
 @Injectable()
 export class SalesService {
-  constructor(
-    @Inject(SALES_REPOSITORY) private readonly salesRepository: SalesRepository,
-  ) {}
-  async create(createSaleDto: CreateSaleDto) {
-    return 'This action adds a new sale';
-  }
+  constructor(private readonly postgresService: PostgresService) {}
 
-  findAll() {
-    return `This action returns all sales`;
+  async findAll(accountId: string): Promise<OutputSaleDto[]> {
+    const transactions = await this.postgresService.query<TransactionTable>(
+      'SELECT * FROM transactions WHERE account_id = $1',
+      [accountId],
+    );
+
+    return transactions.map(
+      (transaction) =>
+        new OutputSaleDto(
+          transaction.id,
+          transaction.client_name,
+          transaction.description,
+          transaction.payment_method,
+          transaction.amount,
+          transaction.payed_at,
+        ),
+    );
   }
 
   findOne(id: number) {

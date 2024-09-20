@@ -1,3 +1,5 @@
+import ValidationException from 'src/exceptions/validation.exception';
+
 export enum TransactionPaymentMethodEnum {
   PIX = 'PIX',
   CREDIT_CARD = 'CREDIT_CARD',
@@ -9,7 +11,9 @@ export enum TransactionPaymentMethodEnum {
 export class TransactionPaymentMethod {
   private constructor(private readonly value: string) {
     if (!(this.value in TransactionPaymentMethodEnum)) {
-      throw new Error('TransactionPaymentMethodEnum is not valid');
+      throw new ValidationException(
+        `${this.value} is not a valid TransactionPaymentMethod`,
+      );
     }
     this.value = TransactionPaymentMethodEnum[this.value.toUpperCase()];
   }
