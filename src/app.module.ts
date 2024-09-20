@@ -8,6 +8,7 @@ import { ConfigModule } from '@nestjs/config';
 import { ProductsModule } from './products/products.module';
 import { ClientsModule } from './clients/clients.module';
 import { SalesModule } from './sales/sales.module';
+import { TransactionsModule } from './transactions/transactions.module';
 import jwtConfig from './signin/config/jwt.config';
 import pgConfig from './postgres/config/pg.config';
 
@@ -24,6 +25,7 @@ import pgConfig from './postgres/config/pg.config';
     ProductsModule,
     ClientsModule,
     SalesModule,
+    TransactionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -26,6 +26,10 @@ exports.up = (pgm) => {
       references: 'clients',
       onDelete: 'cascade',
     },
+    client_name: {
+      type: 'varchar(150)',
+      notNull: true,
+    },
     description: {
       type: 'varchar(150)',
       notNull: true,
