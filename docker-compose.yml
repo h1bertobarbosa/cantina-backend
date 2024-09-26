@@ -13,10 +13,30 @@ services:
       POSTGRES_PASSWORD: 123456
       POSTGRES_DB: cantina
       POSTGRES_USER: cantina
+    networks:
+      - local-network
+
+  nodejs:
+    build:
+      context: .
+      dockerfile: Dockerfile2.local
+    command: npm run start:debug
+    image: nodejs
+    container_name: nodejs
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - 3000:3000
+      - 9229:9229
+    volumes:
+      - .:/code
+    networks:
+      - local-network
 
 volumes:
   pgdata:
+  node_modules: 
 
 networks:
-  default:
-    name: local-network
+  local-network:
+    driver: bridge

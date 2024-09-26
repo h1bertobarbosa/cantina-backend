@@ -2,22 +2,20 @@
 # BUILD FOR LOCAL DEVELOPMENT
 ###################
 
-FROM cgr.dev/chainguard/wolfi-base As development
+FROM node:20-slim AS development
 
 # Create app directory
 WORKDIR /usr/src/app
-RUN apk update && \
-    apk add --no-cache nodejs-20 npm
+
 # Copy application dependency manifests to the container image.
 # A wildcard is used to ensure copying both package.json AND package-lock.json (when available).
 # Copying this first prevents re-running npm install on every code change.
-COPY package*.json ./
+COPY --chown=node:node package*.json ./
 
-# Install app dependencies using the `npm ci` command instead of `npm install`
-RUN npm ci
+RUN npm i
 
 # Bundle app source
-COPY . .
+COPY --chown=node:node . .
 
 # Use the node user from the image (instead of the root user)
 USER node
@@ -26,17 +24,16 @@ USER node
 # BUILD FOR PRODUCTION
 ###################
 
-FROM cgr.dev/chainguard/wolfi-base As build
-RUN apk update && \
-    apk add nodejs-20 npm
+FROM node:20-slim AS build
+
 WORKDIR /usr/src/app
 
-COPY package*.json ./
+COPY --chown=node:node package*.json ./
 
 # In order to run `npm run build` we need access to the Nest CLI which is a dev dependency. In the previous development stage we ran `npm ci` which installed all dependencies, so we can copy over the node_modules directory from the development image
-COPY --from=development /usr/src/app/node_modules ./node_modules
+COPY --chown=node:node --from=development /usr/src/app/node_modules ./node_modules
 
-COPY . .
+COPY --chown=node:node . .
 
 # Run the build command which creates the production bundle
 RUN npm run build
@@ -53,10 +50,8 @@ USER node
 # PRODUCTION
 ###################
 
-FROM cgr.dev/chainguard/wolfi-base As production
+FROM node:20-slim AS production
 
-RUN addgroup -g 1000 node \
-    && adduser -u 1000 -G node -s /bin/sh -D node
 # Copy the bundled code from the build stage to the production image
 COPY --chown=node:node --from=build /usr/src/app/node_modules ./node_modules
 COPY --chown=node:node --from=build /usr/src/app/dist ./dist

@@ -1,42 +1,106 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { UpdateSaleDto } from './dto/update-sale.dto';
 
 import { PostgresService } from 'src/postgres/postgres.service';
 import OutputSaleDto from './dto/output-sale.dto';
 import { TransactionTable } from 'src/transactions/repository/pg-transactions.repository';
-
+import { QuerySaleDto } from './dto/query-sale.dto';
+export interface InputGetById {
+  id: string;
+  accountId: string;
+}
 @Injectable()
 export class SalesService {
   constructor(private readonly postgresService: PostgresService) {}
 
-  async findAll(accountId: string): Promise<OutputSaleDto[]> {
-    const transactions = await this.postgresService.query<TransactionTable>(
-      'SELECT * FROM transactions WHERE account_id = $1',
-      [accountId],
+  async findAll({
+    accountId,
+    clientId,
+    createdAt,
+    orderBy,
+    orderDir,
+    perPage,
+    page,
+    payedAt,
+  }: QuerySaleDto) {
+    const queryParams: (string | number | Date)[] = [accountId];
+    const queryParts: string[] = [
+      `transactions WHERE account_id = $${queryParams.length}`,
+    ];
+
+    if (createdAt) {
+      queryParts.push(`AND created_at >= $${queryParams.length + 1}`);
+      queryParams.push(createdAt);
+    }
+    if (payedAt) {
+      queryParts.push(`AND payed_at >= $${queryParams.length + 1}`);
+      queryParams.push(payedAt);
+    }
+    if (clientId) {
+      queryParts.push(`AND client_id = $${queryParams.length + 1}`);
+      queryParams.push(clientId);
+    }
+    queryParts.push(`ORDER BY $${queryParams.length + 1}`);
+    queryParams.push(`${orderBy} ${orderDir.toUpperCase()}`);
+    queryParts.push(`LIMIT $${queryParams.length + 1}`);
+    queryParams.push(perPage);
+    queryParts.push(`OFFSET $${queryParams.length + 1}`);
+    queryParams.push((page - 1) * perPage);
+    const finalQuery = queryParts.join(' ');
+    const queryTransactions = `SELECT * FROM ${finalQuery}`;
+    const countTransactions = `SELECT COUNT(*) FROM ${finalQuery}`;
+    const [transactions, row] = await Promise.all([
+      this.postgresService.query<TransactionTable>(
+        queryTransactions,
+        queryParams,
+      ),
+      this.postgresService.query<TransactionTable>(
+        countTransactions,
+        queryParams,
+      ),
+    ]);
+    return {
+      data: transactions.map(
+        (transaction) =>
+          new OutputSaleDto(
+            transaction.id,
+            transaction.client_name,
+            transaction.description,
+            transaction.payment_method,
+            transaction.amount,
+            transaction.payed_at,
+          ),
+      ),
+      meta: {
+        page,
+        perPage,
+        total: parseInt(row[0]['count']),
+      },
+    };
+  }
+
+  async findOne({ id, accountId }: InputGetById) {
+    const [transaction] = await this.postgresService.query<TransactionTable>(
+      `SELECT * FROM transactions WHERE id = $1`,
+      [id],
     );
-
-    return transactions.map(
-      (transaction) =>
-        new OutputSaleDto(
-          transaction.id,
-          transaction.client_name,
-          transaction.description,
-          transaction.payment_method,
-          transaction.amount,
-          transaction.payed_at,
-        ),
+    if (!transaction || transaction.account_id !== accountId) {
+      throw new NotFoundException('Transaction not found');
+    }
+    return new OutputSaleDto(
+      transaction.id,
+      transaction.client_name,
+      transaction.description,
+      transaction.payment_method,
+      transaction.amount,
+      transaction.payed_at,
     );
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} sale`;
-  }
-
-  update(id: number, updateSaleDto: UpdateSaleDto) {
-    return `This action updates a #${id} sale`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} sale`;
+  async remove({ id, accountId }: InputGetById) {
+    await this.postgresService.query<TransactionTable>(
+      `DELETE FROM transactions WHERE id = $1 AND account_id = $2`,
+      [id, accountId],
+    );
   }
 }

@@ -1,0 +1,19 @@
+###################
+# BUILD FOR LOCAL DEVELOPMENT
+###################
+
+FROM node:20-slim AS development
+
+# Create app directory
+WORKDIR /code
+
+COPY package.json package.json
+COPY package-lock.json package-lock.json 
+
+RUN npm i
+
+# Bundle app source
+COPY . .
+
+CMD [ "npm", "run", "start:dev" ]
+

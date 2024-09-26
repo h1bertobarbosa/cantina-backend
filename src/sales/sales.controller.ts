@@ -3,16 +3,18 @@ import {
   Get,
   Post,
   Body,
-  Patch,
   Param,
   Delete,
+  Query,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { SalesService } from './sales.service';
 import { CreateSaleDto } from './dto/create-sale.dto';
-import { UpdateSaleDto } from './dto/update-sale.dto';
 import { User, UserSession } from 'src/signin/decorators/user.decorator';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { NewSaleService } from './new-sale.service';
+import { QuerySaleDto } from './dto/query-sale.dto';
 
 @ApiTags('sales')
 @ApiBearerAuth()
@@ -35,22 +37,18 @@ export class SalesController {
   }
 
   @Get()
-  async findAll(@User() user: UserSession) {
-    return this.salesService.findAll(user.accountId);
+  @HttpCode(HttpStatus.PARTIAL_CONTENT)
+  async findAll(@User() user: UserSession, @Query() query: QuerySaleDto) {
+    return this.salesService.findAll({ accountId: user.accountId, ...query });
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.salesService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateSaleDto: UpdateSaleDto) {
-    return this.salesService.update(+id, updateSaleDto);
+  async findOne(@User() user: UserSession, @Param('id') id: string) {
+    return this.salesService.findOne({ id, accountId: user.accountId });
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.salesService.remove(+id);
+  async remove(@User() user: UserSession, @Param('id') id: string) {
+    await this.salesService.remove({ id, accountId: user.accountId });
   }
 }
