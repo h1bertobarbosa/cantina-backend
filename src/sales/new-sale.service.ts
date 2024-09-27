@@ -12,6 +12,15 @@ import {
 } from 'src/transactions/repository/transactions-repository.interface';
 import { ClientTable } from 'src/clients/clients.service';
 import OutputSaleDto from './dto/output-sale.dto';
+import {
+  BillingItemsTable,
+  BillingsTable,
+} from 'src/billings/repository/ports/billint-table.interface';
+import { BillingItemTypeEnum } from 'src/billings/entities/billing-item-type.vo';
+import {
+  GUID_PROVIDER,
+  GuidProvider,
+} from 'src/libs/src/guid/contract/guid-provider.interface';
 
 @Injectable()
 export class NewSaleService {
@@ -19,6 +28,7 @@ export class NewSaleService {
     private readonly postgresService: PostgresService,
     @Inject(TRANSACTIONS_REPOSITORY)
     private readonly transactionRepository: TransactionsRepository,
+    @Inject(GUID_PROVIDER) private readonly guidProvider: GuidProvider,
   ) {}
   async execute(createSaleDto: CreateSaleDto): Promise<OutputSaleDto> {
     const [product, clientName] = await Promise.all([
@@ -40,14 +50,73 @@ export class NewSaleService {
 
     const createdTransaction =
       await this.transactionRepository.save(aTransaction);
+
+    if (aTransaction.getPaymentMethod() === 'TO_RECEIVE') {
+      const aBilling = await this.hasClientOpenBilling(
+        createSaleDto.clientId,
+        createSaleDto.accountId,
+      );
+
+      if (aBilling) {
+        const amount = aTransaction.getAmount() + parseFloat(aBilling.amount);
+        await this.postgresService.query(
+          'INSERT INTO billing_items (id, billing_id, transaction_id, type) VALUES ($1, $2, $3, $4)',
+          [
+            this.guidProvider.generate(),
+            aBilling.id,
+            createdTransaction.getId(),
+            BillingItemTypeEnum.DEBIT,
+          ],
+        );
+        await this.postgresService.query(
+          'UPDATE billings SET amount = $1 WHERE id = $2',
+          [amount, aBilling.id],
+        );
+      } else {
+        const [newBilling] =
+          await this.postgresService.query<BillingItemsTable>(
+            'INSERT INTO billings (id, client_id, account_id,description,amount,payment_method) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+            [
+              this.guidProvider.generate(),
+              createSaleDto.clientId,
+              createSaleDto.accountId,
+              `Fatura mes: ${new Date().getMonth() + 1}/${new Date().getFullYear()}`,
+              aTransaction.getAmount(),
+              aTransaction.getPaymentMethod(),
+            ],
+          );
+        await this.postgresService.query(
+          'INSERT INTO billing_items (id, billing_id, transaction_id, type) VALUES ($1, $2, $3, $4)',
+          [
+            this.guidProvider.generate(),
+            newBilling.id,
+            createdTransaction.getId(),
+            BillingItemTypeEnum.DEBIT,
+          ],
+        );
+      }
+    }
     return new OutputSaleDto(
       createdTransaction.getId(),
       createdTransaction.getClientName(),
       createdTransaction.getDescription(),
       createdTransaction.getPaymentMethod(),
       createdTransaction.getAmount(),
+      createdTransaction.getCreatedAt(),
+      createdTransaction.getUpdatedAt(),
       createdTransaction.getPayedAt(),
     );
+  }
+
+  private async hasClientOpenBilling(clientId: string, accountId: string) {
+    const [billing] = await this.postgresService.query<BillingsTable>(
+      `SELECT id,account_id,amount FROM billings WHERE client_id = $1 AND payed_at IS NULL`,
+      [clientId],
+    );
+    if (!billing || billing.account_id !== accountId) {
+      return false;
+    }
+    return billing;
   }
 
   private async getProduct(id: string, accountId: string) {

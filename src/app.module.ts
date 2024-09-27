@@ -12,6 +12,7 @@ import { TransactionsModule } from './transactions/transactions.module';
 import jwtConfig from './signin/config/jwt.config';
 import pgConfig from './postgres/config/pg.config';
 import { LoggerModule } from './logger/logger.module';
+import { BillingsModule } from './billings/billings.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { LoggerModule } from './logger/logger.module';
     SalesModule,
     TransactionsModule,
     LoggerModule,
+    BillingsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

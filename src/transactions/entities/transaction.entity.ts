@@ -14,6 +14,8 @@ export class Transaction {
     private paymentMethod: TransactionPaymentMethod,
     private amount: number,
     private payedAt?: Date,
+    private createdAt?: Date,
+    private updatedAt?: Date,
   ) {
     if (
       this.paymentMethod.getValue() !== TransactionPaymentMethodEnum.TO_RECEIVE
@@ -29,8 +31,10 @@ export class Transaction {
       input.client_name,
       input.description,
       TransactionPaymentMethod.getInstance(input.payment_method),
-      input.amount,
+      Number(input.amount),
       input.payed_at,
+      input.created_at,
+      input.updated_at,
     );
   }
 
@@ -63,5 +67,13 @@ export class Transaction {
 
   getPayedAt() {
     return this.payedAt;
+  }
+
+  getCreatedAt() {
+    return this.createdAt;
+  }
+
+  getUpdatedAt() {
+    return this.updatedAt;
   }
 }

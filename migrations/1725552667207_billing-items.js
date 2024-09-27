@@ -26,6 +26,10 @@ exports.up = (pgm) => {
       references: 'billings',
       onDelete: 'cascade',
     },
+    type: {
+      type: 'varchar(15)',
+      notNull: true,
+    },
     created_at: {
       type: 'timestamptz',
       notNull: true,

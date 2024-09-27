@@ -1,5 +1,4 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { UpdateSaleDto } from './dto/update-sale.dto';
 
 import { PostgresService } from 'src/postgres/postgres.service';
 import OutputSaleDto from './dto/output-sale.dto';

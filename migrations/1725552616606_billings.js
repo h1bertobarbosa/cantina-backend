@@ -50,7 +50,6 @@ exports.up = (pgm) => {
     },
     payed_at: {
       type: 'timestamptz',
-      default: pgm.func('current_timestamp'),
     },
   });
   pgm.createIndex('billings', 'account_id');
