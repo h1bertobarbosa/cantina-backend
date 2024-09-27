@@ -39,7 +39,7 @@ export class SignupService {
         [
           this.guidProvider.generate(),
           createSignupDto.companyName,
-          createSignupDto.compantEmail,
+          createSignupDto.companyEmail,
           createSignupDto.companyDocument,
         ],
       );
@@ -59,7 +59,7 @@ export class SignupService {
       return {
         id: resUser.rows[0].id,
         companyName: createSignupDto.companyName,
-        compantEmail: createSignupDto.compantEmail,
+        companyEmail: createSignupDto.companyEmail,
         companyDocument: createSignupDto.companyDocument,
         name: createSignupDto.name,
         email: createSignupDto.email,

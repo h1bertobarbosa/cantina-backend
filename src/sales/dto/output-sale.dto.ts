@@ -5,6 +5,8 @@ export default class OutputSaleDto {
     readonly description: string,
     readonly paymentMethod: string,
     readonly amount: number,
+    readonly createdAt: Date,
+    readonly updatedAt: Date,
     readonly payedAt?: Date,
   ) {}
 }

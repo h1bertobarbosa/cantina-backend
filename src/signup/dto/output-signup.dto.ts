@@ -7,7 +7,7 @@ export class OutputSignupDto {
   companyName: string;
 
   @ApiProperty()
-  compantEmail: string;
+  companyEmail: string;
 
   @ApiProperty()
   companyDocument: string;

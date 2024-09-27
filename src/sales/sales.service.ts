@@ -68,6 +68,8 @@ export class SalesService {
             transaction.description,
             transaction.payment_method,
             transaction.amount,
+            transaction.created_at,
+            transaction.updated_at,
             transaction.payed_at,
           ),
       ),
@@ -93,6 +95,8 @@ export class SalesService {
       transaction.description,
       transaction.payment_method,
       transaction.amount,
+      transaction.created_at,
+      transaction.updated_at,
       transaction.payed_at,
     );
   }

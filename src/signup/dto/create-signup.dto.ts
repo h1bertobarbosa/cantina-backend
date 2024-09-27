@@ -7,7 +7,7 @@ export class CreateSignupDto {
   companyName: string;
   @IsEmail()
   @ApiProperty()
-  compantEmail: string;
+  companyEmail: string;
   @IsString()
   @ApiProperty()
   companyDocument: string;
