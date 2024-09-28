@@ -38,6 +38,31 @@ export class Transaction {
     );
   }
 
+  static fromData(input: {
+    accountId: string;
+    clientId: string;
+    clientName: string;
+    description: string;
+    paymentMethod: TransactionPaymentMethodEnum;
+    amount: number;
+    payedAt?: Date;
+    createdAt?: Date;
+    updatedAt?: Date;
+  }) {
+    return new Transaction(
+      '',
+      input.accountId,
+      input.clientId,
+      input.clientName,
+      input.description,
+      TransactionPaymentMethod.getInstance(input.paymentMethod),
+      Number(input.amount),
+      input.payedAt,
+      input.createdAt,
+      input.updatedAt,
+    );
+  }
+
   getId() {
     return this.id;
   }
