@@ -5,6 +5,7 @@ export interface BillingsTable {
   payment_method: string;
   description: string;
   amount: string;
+  amount_payed: string;
   created_at: Date;
   updated_at: Date;
   payed_at: Date;

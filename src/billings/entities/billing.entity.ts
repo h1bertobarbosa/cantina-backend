@@ -11,6 +11,7 @@ export default class Billing {
     private clientId: string,
     private description: string,
     private amount: number,
+    private amountPayed: number,
     private paymentMethod: string,
     private payedAt?: Date,
     private createdAt?: Date,
@@ -24,6 +25,7 @@ export default class Billing {
       input.client_id,
       input.description,
       Number(input.amount),
+      Number(input.amount_payed),
       input.payment_method,
       input.payed_at,
       input.created_at,
@@ -31,31 +33,32 @@ export default class Billing {
     );
   }
 
-  pay(amount: number) {
-    this.amount -= amount;
-    if (amount < this.amount) {
+  pay(amountPayed: number) {
+    this.amountPayed = amountPayed;
+    const amountDifference = this.amount - this.amountPayed;
+    if (amountPayed < amountDifference) {
       this.setTransaction(
         Transaction.fromData({
           accountId: this.accountId,
           clientId: this.clientId,
           clientName: '',
-          description: 'Credito no valor de ' + amount,
+          description: 'Credito no valor de ' + amountPayed,
           paymentMethod: TransactionPaymentMethodEnum[this.paymentMethod],
-          amount,
+          amount: amountPayed,
         }),
       );
       return;
     }
-    if (amount >= this.amount) {
+    if (amountPayed >= amountDifference) {
       this.payedAt = new Date();
       this.setTransaction(
         Transaction.fromData({
           accountId: this.accountId,
           clientId: this.clientId,
           clientName: this.clientName,
-          description: 'Credito no valor de ' + amount,
+          description: 'Credito no valor de ' + amountPayed,
           paymentMethod: TransactionPaymentMethodEnum[this.paymentMethod],
-          amount,
+          amount: amountPayed,
         }),
       );
     }
@@ -80,6 +83,9 @@ export default class Billing {
   getAmount() {
     return this.amount;
   }
+  getAmountPayed() {
+    return this.amountPayed;
+  }
 
   getAccountId() {
     return this.accountId;
@@ -90,6 +96,10 @@ export default class Billing {
   }
   getClientName() {
     return this.clientName;
+  }
+
+  getAmountDifference() {
+    return this.amount - this.amountPayed;
   }
 
   getDescription() {

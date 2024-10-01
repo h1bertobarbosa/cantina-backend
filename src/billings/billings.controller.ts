@@ -3,13 +3,16 @@ import { BillingsService } from './billings.service';
 import { PayBillingDto } from './dto/pay-billing.dto';
 import { User, UserSession } from 'src/signin/decorators/user.decorator';
 import { QueryBillingDto } from './dto/query-billing.dto';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
+@ApiBearerAuth()
+@ApiTags('billings')
 @Controller('billings')
 export class BillingsController {
   constructor(private readonly billingsService: BillingsService) {}
 
   @Get()
-  findAll(@User() user: UserSession, @Query() query: QueryBillingDto) {
+  async findAll(@User() user: UserSession, @Query() query: QueryBillingDto) {
     return this.billingsService.findAll({
       ...query,
       accountId: user.accountId,

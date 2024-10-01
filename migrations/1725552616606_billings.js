@@ -38,6 +38,11 @@ exports.up = (pgm) => {
       type: 'decimal(6,2)',
       notNull: true,
     },
+    amount_payed: {
+      type: 'decimal(6,2)',
+      notNull: true,
+      default: 0,
+    },
     created_at: {
       type: 'timestamptz',
       notNull: true,

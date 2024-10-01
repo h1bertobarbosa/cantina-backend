@@ -16,6 +16,7 @@ import {
 } from 'src/libs/src/guid/contract/guid-provider.interface';
 import BillingFacade from './facades/billing.facade';
 import { BillingItemTypeEnum } from './entities/billing-item-type.vo';
+import { TransactionPaymentMethodEnum } from 'src/transactions/value-objects/transaction-payment-method.vo';
 export interface InputGetById {
   id: string;
   accountId: string;
@@ -39,7 +40,7 @@ export class BillingsService {
   }: QueryBillingDto) {
     const queryParams: (string | number | Date)[] = [accountId];
     const queryParts: string[] = [
-      `transactions WHERE account_id = $${queryParams.length}`,
+      `billings WHERE account_id = $${queryParams.length}`,
     ];
 
     if (clientId) {
@@ -92,7 +93,10 @@ export class BillingsService {
       billing.client_id,
       billing.account_id,
     );
-    const aBilling = Billing.fromTable(billing);
+    const aBilling = Billing.fromTable({
+      ...billing,
+      amount_payed: payBillingDto.amount.toFixed(2),
+    });
     aBilling.setClienteName(clientName);
     aBilling.pay(Number(payBillingDto.amount));
 
@@ -116,14 +120,16 @@ export class BillingsService {
       aBilling,
       payBillingDto,
     );
-    if (aBilling.getAmount() < 0) {
+    if (aBilling.getAmountDifference() < 0) {
       const newBilling = await this.payBillingFacade.generateNewBilling({
         accountId: aBilling.getAccountId(),
         clientId: aBilling.getClientId(),
-        clientName: aBilling.getClientName(),
-        amount: aBilling.getAmount(),
+        amount: 0,
+        amountPayed: Math.abs(aBilling.getAmountDifference()),
+        paymentMethod: TransactionPaymentMethodEnum.TO_RECEIVE,
       });
-      const transaction = await this.payBillingFacade.generateTransactions(
+      newBilling.setClienteName(aBilling.getClientName());
+      const transaction = await this.payBillingFacade.generateCreditTransaction(
         newBilling,
         payBillingDto.paymentMethod,
       );

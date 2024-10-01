@@ -25,20 +25,22 @@ export default class BillingFacade {
   ) {}
 
   async generateNewBilling(input: {
+    paymentMethod: TransactionPaymentMethodEnum;
     accountId: string;
     clientId: string;
-    clientName: string;
     amount: number;
+    amountPayed: number;
   }): Promise<Billing> {
     const [newBilling] = await this.postgresService.query<BillingsTable>(
-      `INSERT INTO billings (id, account_id, client_id, client_name, amount,description) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      `INSERT INTO billings (id, account_id, client_id, amount,amount_payed,description,payment_method) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
       [
         this.guidProvider.generate(),
         input.accountId,
         input.clientId,
-        input.clientName,
         input.amount,
+        input.amountPayed,
         `Fatura: ${new Date().getMonth() + 1}/${new Date().getFullYear()}`,
+        input.paymentMethod,
       ],
     );
 
@@ -66,9 +68,26 @@ export default class BillingFacade {
         accountId: aBilling.getAccountId(),
         clientId: aBilling.getClientId(),
         clientName: aBilling.getClientName(),
-        description: `Credito: ${aBilling.getAmount()}`,
+        description: `Credito: R$ ${aBilling.getAmount()}`,
         paymentMethod: TransactionPaymentMethodEnum[paymentMethod],
         amount: aBilling.getAmount(),
+        payedAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
+    );
+    return aTransaction;
+  }
+  async generateCreditTransaction(aBilling: Billing, paymentMethod: string) {
+    const amountDifference = Math.abs(aBilling.getAmountDifference());
+    const aTransaction = await this.transactionRepository.save(
+      Transaction.fromData({
+        accountId: aBilling.getAccountId(),
+        clientId: aBilling.getClientId(),
+        clientName: aBilling.getClientName(),
+        description: `Credito: ${amountDifference}`,
+        paymentMethod: TransactionPaymentMethodEnum[paymentMethod],
+        amount: amountDifference,
         payedAt: new Date(),
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -80,29 +99,43 @@ export default class BillingFacade {
     aBilling: Billing,
     payBillingDto: PayBillingDto,
   ) {
-    await this.postgresService.query(
-      `UPDATE billings SET payed_at = $1, amount = $2 WHERE id = $3`,
-      [aBilling.getPayedAt(), 0, aBilling.getId()],
-    );
-
     const aTransaction = await this.generateTransactions(
       aBilling,
       payBillingDto.paymentMethod,
     );
-    await this.generateBillingItems(
-      aBilling,
-      aTransaction,
-      BillingItemTypeEnum.CREDIT,
-    );
-    await this.postgresService.query(
-      `INSERT INTO billing_items (id,transaction_id, billing_id, type) VALUES ($1, $2, $3, $4)`,
-      [
-        this.guidProvider.generate(),
-        aTransaction.getId(),
-        aBilling.getId(),
+    const currentDate = new Date();
+    await Promise.all([
+      this.postgresService.query(
+        `UPDATE billings SET payed_at = $1,  payment_method = $2, updated_at = $3, amount_payed = $4 WHERE id = $5`,
+        [
+          aBilling.getPayedAt(),
+          payBillingDto.paymentMethod,
+          currentDate,
+          aBilling.getAmountPayed(),
+          aBilling.getId(),
+        ],
+      ),
+      this.generateBillingItems(
+        aBilling,
+        aTransaction,
         BillingItemTypeEnum.CREDIT,
-      ],
-    );
+      ),
+      this.postgresService.query(
+        `UPDATE transactions
+          SET payment_method = $1, payed_at = $2, updated_at = $3
+          FROM billing_items as bi
+          WHERE transactions.id = bi.transaction_id 
+            AND bi.billing_id = $4
+            AND transactions.payed_at IS NULL
+        `,
+        [
+          payBillingDto.paymentMethod,
+          currentDate,
+          currentDate,
+          aBilling.getId(),
+        ],
+      ),
+    ]);
   }
   async payPartialAmount(
     aBilling: Billing,

@@ -69,8 +69,8 @@ export class NewSaleService {
           ],
         );
         await this.postgresService.query(
-          'UPDATE billings SET amount = $1 WHERE id = $2',
-          [amount, aBilling.id],
+          'UPDATE billings SET amount = $1, updated_at = $2 WHERE id = $3',
+          [amount, new Date(), aBilling.id],
         );
       } else {
         const [newBilling] =
@@ -80,7 +80,7 @@ export class NewSaleService {
               this.guidProvider.generate(),
               createSaleDto.clientId,
               createSaleDto.accountId,
-              `Fatura mes: ${new Date().getMonth() + 1}/${new Date().getFullYear()}`,
+              `Fatura mes: ${new Date().getMonth()}/${new Date().getFullYear()}`,
               aTransaction.getAmount(),
               aTransaction.getPaymentMethod(),
             ],
