@@ -142,18 +142,21 @@ export default class BillingFacade {
     amount: number,
     paymentMethod: string,
   ) {
-    await this.postgresService.query(
-      `UPDATE billings SET amount = $1 WHERE id = $2`,
-      [aBilling.getAmount(), aBilling.getId()],
-    );
     const transaction = await this.generateTransactions(
       aBilling,
       paymentMethod,
     );
-    await this.generateBillingItems(
-      aBilling,
-      transaction,
-      BillingItemTypeEnum.CREDIT,
-    );
+
+    await Promise.all([
+      this.postgresService.query(
+        `UPDATE billings SET amount_payed = $1, updated_at = $2 WHERE id = $3`,
+        [amount, new Date(), aBilling.getId()],
+      ),
+      this.generateBillingItems(
+        aBilling,
+        transaction,
+        BillingItemTypeEnum.CREDIT,
+      ),
+    ]);
   }
 }
