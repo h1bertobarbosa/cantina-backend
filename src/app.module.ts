@@ -13,6 +13,7 @@ import jwtConfig from './signin/config/jwt.config';
 import pgConfig from './postgres/config/pg.config';
 import { LoggerModule } from './logger/logger.module';
 import { BillingsModule } from './billings/billings.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { BillingsModule } from './billings/billings.module';
     TransactionsModule,
     LoggerModule,
     BillingsModule,
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [AppService],
