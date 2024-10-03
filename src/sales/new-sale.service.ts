@@ -68,9 +68,13 @@ export class NewSaleService {
             BillingItemTypeEnum.DEBIT,
           ],
         );
+        let newAmount = amount;
+        if (Number(aBilling.amount_payed) > 0) {
+          newAmount = amount - Number(aBilling.amount_payed);
+        }
         await this.postgresService.query(
-          'UPDATE billings SET amount = $1, updated_at = $2 WHERE id = $3',
-          [amount, new Date(), aBilling.id],
+          'UPDATE billings SET amount = $1, updated_at = $2, amount_payed = $3 WHERE id = $4',
+          [newAmount, new Date(), 0, aBilling.id],
         );
       } else {
         const [newBilling] =
@@ -110,7 +114,7 @@ export class NewSaleService {
 
   private async hasClientOpenBilling(clientId: string, accountId: string) {
     const [billing] = await this.postgresService.query<BillingsTable>(
-      `SELECT id,account_id,amount FROM billings WHERE client_id = $1 AND payed_at IS NULL`,
+      `SELECT id,account_id,amount,amount_payed FROM billings WHERE client_id = $1 AND payed_at IS NULL`,
       [clientId],
     );
     if (!billing || billing.account_id !== accountId) {

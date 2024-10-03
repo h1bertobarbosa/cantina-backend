@@ -18,6 +18,7 @@ export class UpdatePasswordUserDto {
     minSymbols: 0,
   })
   password: string;
+  @ApiProperty()
   @IsString()
   @IsDefined()
   @IsIn([Math.random()], {

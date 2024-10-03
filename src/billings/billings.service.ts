@@ -65,4 +65,17 @@ export class BillingsService {
     }
     return OutputBillingDto.fromTable(billing);
   }
+
+  async getBillingItems({ id, accountId }: InputGetById) {
+    const [billing] = await this.postgresService.query<BillingsTable>(
+      `SELECT b.*,c.name FROM billings b
+        JOIN clients c ON c.id = b.client_id
+        WHERE b.id = $1`,
+      [id],
+    );
+    if (!billing || billing.account_id !== accountId) {
+      throw new NotFoundException('Billing not found');
+    }
+    return OutputBillingDto.fromTable(billing);
+  }
 }
