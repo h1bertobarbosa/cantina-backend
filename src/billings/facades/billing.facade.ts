@@ -68,12 +68,13 @@ export default class BillingFacade {
         accountId: aBilling.getAccountId(),
         clientId: aBilling.getClientId(),
         clientName: aBilling.getClientName(),
-        description: `Credito: R$ ${aBilling.getAmount()}`,
+        description: `Crédito de R$ ${aBilling.getAmount().toFixed(2)}`,
         paymentMethod: TransactionPaymentMethodEnum[paymentMethod],
         amount: aBilling.getAmount(),
         payedAt: new Date(),
         createdAt: new Date(),
         updatedAt: new Date(),
+        quantity: 1,
       }),
     );
     return aTransaction;
@@ -85,12 +86,13 @@ export default class BillingFacade {
         accountId: aBilling.getAccountId(),
         clientId: aBilling.getClientId(),
         clientName: aBilling.getClientName(),
-        description: `Credito: ${amountDifference}`,
+        description: `Crédito de R$ ${amountDifference.toFixed(2)}`,
         paymentMethod: TransactionPaymentMethodEnum[paymentMethod],
         amount: amountDifference,
         payedAt: new Date(),
         createdAt: new Date(),
         updatedAt: new Date(),
+        quantity: 1,
       }),
     );
     return aTransaction;
@@ -137,20 +139,20 @@ export default class BillingFacade {
       ),
     ]);
   }
-  async payPartialAmount(
-    aBilling: Billing,
-    amount: number,
-    paymentMethod: string,
-  ) {
-    const transaction = await this.generateTransactions(
-      aBilling,
-      paymentMethod,
+  async payPartialAmount(aBilling: Billing) {
+    const transaction = await this.transactionRepository.save(
+      aBilling.getTransactions()[0],
     );
 
     await Promise.all([
       this.postgresService.query(
-        `UPDATE billings SET amount_payed = $1, updated_at = $2 WHERE id = $3`,
-        [amount, new Date(), aBilling.getId()],
+        `UPDATE billings SET amount_payed = amount_payed + $1, updated_at = $2, amount = $3 WHERE id = $4`,
+        [
+          aBilling.getAmountPayed(),
+          new Date(),
+          aBilling.getAmountDifference(),
+          aBilling.getId(),
+        ],
       ),
       this.generateBillingItems(
         aBilling,

@@ -18,13 +18,18 @@ exports.up = (pgm) => {
       type: 'uuid',
       notNull: true,
       references: 'accounts',
-      onDelete: 'cascade',
+      onDelete: 'restrict',
     },
     client_id: {
       type: 'uuid',
       notNull: true,
       references: 'clients',
-      onDelete: 'cascade',
+      onDelete: 'restrict',
+    },
+    product_id: {
+      type: 'uuid',
+      references: 'products',
+      onDelete: 'restrict',
     },
     client_name: {
       type: 'varchar(150)',
@@ -40,6 +45,10 @@ exports.up = (pgm) => {
     },
     amount: {
       type: 'decimal(6,2)',
+      notNull: true,
+    },
+    quantity: {
+      type: 'integer',
       notNull: true,
     },
     created_at: {

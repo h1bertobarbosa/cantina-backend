@@ -33,32 +33,36 @@ export default class Billing {
     );
   }
 
-  pay(amountPayed: number) {
+  pay(amountPayed: number, paymentMethod: string) {
     this.amountPayed = amountPayed;
     const amountDifference = this.amount - this.amountPayed;
-    if (amountPayed < amountDifference) {
+    if (amountDifference > 0) {
       this.setTransaction(
         Transaction.fromData({
           accountId: this.accountId,
           clientId: this.clientId,
-          clientName: '',
-          description: 'Credito no valor de ' + amountPayed,
-          paymentMethod: TransactionPaymentMethodEnum[this.paymentMethod],
+          clientName: this.clientName,
+          description: 'Crédito de R$ ' + amountPayed.toFixed(2),
+          paymentMethod: TransactionPaymentMethodEnum[paymentMethod],
           amount: amountPayed,
+          quantity: 1,
+          payedAt: new Date(),
         }),
       );
       return;
     }
-    if (amountPayed >= amountDifference) {
+    if (amountDifference <= 0) {
       this.payedAt = new Date();
       this.setTransaction(
         Transaction.fromData({
           accountId: this.accountId,
           clientId: this.clientId,
           clientName: this.clientName,
-          description: 'Credito no valor de ' + amountPayed,
-          paymentMethod: TransactionPaymentMethodEnum[this.paymentMethod],
+          description: 'Crédito de R$ ' + amountPayed.toFixed(2),
+          paymentMethod: TransactionPaymentMethodEnum[paymentMethod],
           amount: amountPayed,
+          quantity: 1,
+          payedAt: this.payedAt,
         }),
       );
     }
@@ -104,5 +108,9 @@ export default class Billing {
 
   getDescription() {
     return this.description;
+  }
+
+  getTransactions() {
+    return this.transactions;
   }
 }

@@ -18,13 +18,13 @@ exports.up = (pgm) => {
       type: 'uuid',
       notNull: true,
       references: 'accounts',
-      onDelete: 'cascade',
+      onDelete: 'restrict',
     },
     client_id: {
       type: 'uuid',
       notNull: true,
       references: 'clients',
-      onDelete: 'cascade',
+      onDelete: 'restrict',
     },
     payment_method: {
       type: 'varchar(15)',

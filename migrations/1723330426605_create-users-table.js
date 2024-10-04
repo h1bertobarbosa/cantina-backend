@@ -18,7 +18,7 @@ exports.up = (pgm) => {
       type: 'uuid',
       notNull: true,
       references: 'accounts',
-      onDelete: 'cascade',
+      onDelete: 'restrict',
     },
     name: {
       type: 'varchar(150)',

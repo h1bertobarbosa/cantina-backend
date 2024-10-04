@@ -39,6 +39,7 @@ export class NewSaleService {
       id: '',
       account_id: createSaleDto.accountId,
       client_id: createSaleDto.clientId,
+      product_id: createSaleDto.productId,
       client_name: clientName,
       description: CreateTransactionDescription.execute(
         product,
@@ -46,6 +47,7 @@ export class NewSaleService {
       ),
       payment_method: createSaleDto.paymentMethod,
       amount: product.getPrice() * createSaleDto.quantity,
+      quantity: createSaleDto.quantity,
     });
 
     const createdTransaction =

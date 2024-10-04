@@ -13,9 +13,11 @@ export class Transaction {
     private description: string,
     private paymentMethod: TransactionPaymentMethod,
     private amount: number,
+    private quantity: number,
     private payedAt?: Date,
     private createdAt?: Date,
     private updatedAt?: Date,
+    private productId?: string,
   ) {
     if (
       this.paymentMethod.getValue() !== TransactionPaymentMethodEnum.TO_RECEIVE
@@ -32,19 +34,23 @@ export class Transaction {
       input.description,
       TransactionPaymentMethod.getInstance(input.payment_method),
       Number(input.amount),
+      Number(input.quantity),
       input.payed_at,
       input.created_at,
       input.updated_at,
+      input.product_id,
     );
   }
 
   static fromData(input: {
     accountId: string;
     clientId: string;
+    productId?: string;
     clientName: string;
     description: string;
     paymentMethod: TransactionPaymentMethodEnum;
     amount: number;
+    quantity: number;
     payedAt?: Date;
     createdAt?: Date;
     updatedAt?: Date;
@@ -57,9 +63,11 @@ export class Transaction {
       input.description,
       TransactionPaymentMethod.getInstance(input.paymentMethod),
       Number(input.amount),
+      Number(input.quantity),
       input.payedAt,
       input.createdAt,
       input.updatedAt,
+      input.productId,
     );
   }
 
@@ -100,5 +108,13 @@ export class Transaction {
 
   getUpdatedAt() {
     return this.updatedAt;
+  }
+
+  getProductId() {
+    return this.productId;
+  }
+
+  getQuantity() {
+    return this.quantity;
   }
 }

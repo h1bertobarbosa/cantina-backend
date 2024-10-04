@@ -30,17 +30,13 @@ export default class PayBillingService {
       amount_payed: payBillingDto.amount.toFixed(2),
     });
     aBilling.setClienteName(clientName);
-    aBilling.pay(Number(payBillingDto.amount));
+    aBilling.pay(Number(payBillingDto.amount), payBillingDto.paymentMethod);
 
     if (aBilling.getPayedAt()) {
       await this.payTotalAmount(aBilling, payBillingDto);
-      return;
+    } else {
+      await this.payBillingFacade.payPartialAmount(aBilling);
     }
-    await this.payBillingFacade.payPartialAmount(
-      aBilling,
-      Number(payBillingDto.amount),
-      payBillingDto.paymentMethod,
-    );
     return OutputBillingDto.fromTable(billing);
   }
 

@@ -10,10 +10,12 @@ export interface TransactionTable {
   id: string;
   account_id: string;
   client_id: string;
+  product_id?: string;
   client_name: string;
   description: string;
   payment_method: string;
   amount: number;
+  quantity: number;
   created_at: Date;
   updated_at: Date;
   payed_at: Date;
@@ -27,15 +29,17 @@ export default class PgTransactionsRepository
   ) {}
   async save(transaction: Transaction): Promise<Transaction> {
     const [newTransaction] = await this.postgresService.query<TransactionTable>(
-      `INSERT INTO transactions (id, account_id,client_id,client_name, description, payment_method,amount,payed_at) VALUES ($1, $2, $3, $4,$5,$6,$7,$8) RETURNING *`,
+      `INSERT INTO transactions (id, account_id,client_id, product_id,client_name, description, payment_method,amount,quantity,payed_at) VALUES ($1, $2, $3, $4,$5,$6,$7,$8,$9,$10) RETURNING *`,
       [
         this.guidProvider.generate(),
         transaction.getAccountId(),
         transaction.getClientId(),
+        transaction.getProductId(),
         transaction.getClientName(),
         transaction.getDescription(),
         transaction.getPaymentMethod(),
         transaction.getAmount(),
+        transaction.getQuantity(),
         transaction.getPayedAt(),
       ],
     );
