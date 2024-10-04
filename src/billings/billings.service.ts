@@ -1,8 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { QueryBillingDto } from './dto/query-billing.dto';
 import { PostgresService } from 'src/postgres/postgres.service';
-import { BillingsTable } from './repository/ports/billint-table.interface';
+import {
+  BillingItemsTable,
+  BillingsTable,
+} from './repository/ports/billint-table.interface';
 import OutputBillingDto from './dto/output-billing.dto';
+import OutputBillingItemDto from './dto/output-billing-item.dto';
 
 export interface InputGetById {
   id: string;
@@ -67,15 +71,13 @@ export class BillingsService {
   }
 
   async getBillingItems({ id, accountId }: InputGetById) {
-    const [billing] = await this.postgresService.query<BillingsTable>(
-      `SELECT b.*,c.name FROM billings b
-        JOIN clients c ON c.id = b.client_id
-        WHERE b.id = $1`,
-      [id],
+    const items = await this.postgresService.query<BillingItemsTable>(
+      `SELECT bi.id,bi.type,bi.created_at,t.amount,t.client_name,t.description,t.payment_method 
+       FROM billing_items bi
+       JOIN transactions t ON t.id = bi.transaction_id
+       WHERE bi.billing_id = $1 AND t.account_id = $2`,
+      [id, accountId],
     );
-    if (!billing || billing.account_id !== accountId) {
-      throw new NotFoundException('Billing not found');
-    }
-    return OutputBillingDto.fromTable(billing);
+    return items.map((item) => OutputBillingItemDto.fromTable(item));
   }
 }

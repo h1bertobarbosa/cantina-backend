@@ -10,7 +10,14 @@ export interface BillingsTable {
   updated_at: Date;
   payed_at: Date;
 }
-export interface BillingItemsTable {
+interface TransactionsTable {
+  amount: string;
+  client_name: string;
+  description: string;
+  payment_method: string;
+}
+
+export interface BillingItemsTable extends TransactionsTable {
   id: string;
   transaction_id: string;
   billing_id: string;

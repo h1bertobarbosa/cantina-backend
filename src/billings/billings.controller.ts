@@ -43,9 +43,10 @@ export class BillingsController {
       billingId: id,
     });
   }
+
   @Get(':id/items')
   async billingItems(@Param('id') id: string, @User() user) {
-    return this.billingsService.findOne({
+    return this.billingsService.getBillingItems({
       accountId: user.accountId,
       id,
     });
