@@ -1,65 +1,41 @@
-###################
-# BUILD FOR LOCAL DEVELOPMENT
-###################
+# Etapa 1: Construção da aplicação
+FROM node:20-slim AS builder
 
-FROM cgr.dev/chainguard/wolfi-base As development
+# Define o diretório de trabalho dentro do container
+WORKDIR /app
 
-# Create app directory
-WORKDIR /usr/src/app
-RUN apk update && \
-    apk add --no-cache nodejs-20 npm
-# Copy application dependency manifests to the container image.
-# A wildcard is used to ensure copying both package.json AND package-lock.json (when available).
-# Copying this first prevents re-running npm install on every code change.
+# Copia o package.json e package-lock.json (se existir)
 COPY package*.json ./
 
-# Install app dependencies using the `npm ci` command instead of `npm install`
-RUN npm ci
+# Instala as dependências de desenvolvimento para compilar a aplicação
+RUN npm install
 
-# Bundle app source
+# Copia o restante dos arquivos da aplicação
 COPY . .
 
-# Use the node user from the image (instead of the root user)
-USER node
-
-###################
-# BUILD FOR PRODUCTION
-###################
-
-FROM cgr.dev/chainguard/wolfi-base As build
-RUN apk update && \
-    apk add nodejs-20 npm
-WORKDIR /usr/src/app
-
-COPY package*.json ./
-
-# In order to run `npm run build` we need access to the Nest CLI which is a dev dependency. In the previous development stage we ran `npm ci` which installed all dependencies, so we can copy over the node_modules directory from the development image
-COPY --from=development /usr/src/app/node_modules ./node_modules
-
-COPY . .
-
-# Run the build command which creates the production bundle
+# Compila o projeto NestJS
 RUN npm run build
 
-# Set NODE_ENV environment variable
-ENV NODE_ENV production
+# Instala apenas as dependências de produção
+RUN npm install --only=production
+# Etapa 2: Container final
+FROM node:20-slim AS production
 
-# Running `npm ci` removes the existing node_modules directory and passing in --only=production ensures that only the production dependencies are installed. This ensures that the node_modules directory is as optimized as possible
-RUN npm ci --only=production && npm cache clean --force
+# Define o diretório de trabalho dentro do container
+WORKDIR /app
 
-USER node
+# Copia as dependências de produção da etapa anterior
+COPY --from=builder /app/node_modules ./node_modules
 
-###################
-# PRODUCTION
-###################
+# Copia a build gerada na etapa anterior
+COPY --from=builder /app/dist ./dist
 
-FROM cgr.dev/chainguard/wolfi-base As production
+# Define a variável de ambiente para produção
+ENV NODE_ENV=production
 
-RUN addgroup -g 1000 node \
-    && adduser -u 1000 -G node -s /bin/sh -D node
-# Copy the bundled code from the build stage to the production image
-COPY --chown=node:node --from=build /usr/src/app/node_modules ./node_modules
-COPY --chown=node:node --from=build /usr/src/app/dist ./dist
+# Expõe a porta que a aplicação vai usar
+EXPOSE 3000
 
-# Start the server using the production build
-CMD [ "node", "dist/main.js" ]
+# Comando para iniciar a aplicação
+CMD ["node", "dist/main"]
+
