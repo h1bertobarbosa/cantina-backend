@@ -17,7 +17,7 @@ COPY . .
 RUN npm run build
 
 # Instala apenas as dependências de produção
-RUN npm install --only=production
+RUN npm install --omit=dev
 # Etapa 2: Container final
 FROM node:20-slim AS production
 
