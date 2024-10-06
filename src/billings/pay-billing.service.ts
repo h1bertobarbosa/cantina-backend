@@ -79,3 +79,9 @@ export default class PayBillingService {
     }
   }
 }
+/*
+lancei uma venda
+paguei parcial
+lancei outra venda
+deu erro no calculo
+*/

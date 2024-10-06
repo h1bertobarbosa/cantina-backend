@@ -35,19 +35,17 @@ export class NewSaleService {
       this.getProduct(createSaleDto.productId, createSaleDto.accountId),
       this.getClientName(createSaleDto.clientId, createSaleDto.accountId),
     ]);
+    const quantity = Number(createSaleDto.quantity);
     const aTransaction = Transaction.getInstance({
       id: '',
       account_id: createSaleDto.accountId,
       client_id: createSaleDto.clientId,
       product_id: createSaleDto.productId,
       client_name: clientName,
-      description: CreateTransactionDescription.execute(
-        product,
-        createSaleDto.quantity,
-      ),
+      description: CreateTransactionDescription.execute(product, quantity),
       payment_method: createSaleDto.paymentMethod,
-      amount: product.getPrice() * createSaleDto.quantity,
-      quantity: createSaleDto.quantity,
+      amount: product.getPrice() * quantity,
+      quantity: quantity,
     });
 
     const createdTransaction =
@@ -71,11 +69,12 @@ export class NewSaleService {
           ],
         );
         let newAmount = amount;
-        if (Number(aBilling.amount_payed) > 0) {
-          newAmount = amount - Number(aBilling.amount_payed);
+        if (Number(aBilling.amount_payed) > 0 && !Number(aBilling.amount)) {
+          newAmount = Math.abs(amount - Number(aBilling.amount_payed));
         }
+        console.log(newAmount);
         await this.postgresService.query(
-          'UPDATE billings SET amount = $1, updated_at = $2, amount_payed = $3 WHERE id = $4',
+          'UPDATE billings SET amount =  $1, updated_at = $2, amount_payed = $3 WHERE id = $4',
           [newAmount, new Date(), 0, aBilling.id],
         );
       } else {
