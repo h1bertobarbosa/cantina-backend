@@ -37,7 +37,7 @@ export class QuerySaleDto {
     Object.assign(this, partial);
     this.perPage = this.perPage || 10;
     this.page = this.page || 1;
-    this.orderDir = this.orderDir || 'asc';
-    this.orderBy = this.orderBy || 'name';
+    this.orderDir = this.orderDir || 'desc';
+    this.orderBy = this.orderBy || 'created_at';
   }
 }

@@ -32,7 +32,8 @@ export class BillingsService {
       queryParts.push(`AND client_id = $${queryParams.length + 1}`);
       queryParams.push(clientId);
     }
-
+    const finalQueryCount = queryParts.join(' ');
+    const queryParamsCount = [...queryParams];
     queryParts.push(`ORDER BY $${queryParams.length + 1}`);
     queryParams.push(`${orderBy} ${orderDir.toUpperCase()}`);
     queryParts.push(`LIMIT $${queryParams.length + 1}`);
@@ -41,10 +42,13 @@ export class BillingsService {
     queryParams.push((page - 1) * perPage);
     const finalQuery = queryParts.join(' ');
     const queryBillings = `SELECT billings.*,clients.name FROM ${finalQuery} `;
-    const countBillings = `SELECT COUNT(billings.*) FROM ${finalQuery}`;
+    const countBillings = `SELECT COUNT(billings.*) FROM ${finalQueryCount}`;
     const [billings, row] = await Promise.all([
       this.postgresService.query<BillingsTable>(queryBillings, queryParams),
-      this.postgresService.query<BillingsTable>(countBillings, queryParams),
+      this.postgresService.query<BillingsTable>(
+        countBillings,
+        queryParamsCount,
+      ),
     ]);
 
     return {

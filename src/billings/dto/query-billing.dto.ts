@@ -25,7 +25,7 @@ export class QueryBillingDto {
     Object.assign(this, partial);
     this.perPage = this.perPage || 10;
     this.page = this.page || 1;
-    this.orderDir = this.orderDir || 'asc';
-    this.orderBy = this.orderBy || 'id';
+    this.orderDir = this.orderDir || 'desc';
+    this.orderBy = this.orderBy || 'created_at';
   }
 }

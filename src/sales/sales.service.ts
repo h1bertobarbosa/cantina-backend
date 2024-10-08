@@ -39,6 +39,8 @@ export class SalesService {
       queryParts.push(`AND client_id = $${queryParams.length + 1}`);
       queryParams.push(clientId);
     }
+    const finalQueryCount = queryParts.join(' ');
+    const queryParamsCount = [...queryParams];
     queryParts.push(`ORDER BY $${queryParams.length + 1}`);
     queryParams.push(`${orderBy} ${orderDir.toUpperCase()}`);
     queryParts.push(`LIMIT $${queryParams.length + 1}`);
@@ -47,7 +49,7 @@ export class SalesService {
     queryParams.push((page - 1) * perPage);
     const finalQuery = queryParts.join(' ');
     const queryTransactions = `SELECT * FROM ${finalQuery}`;
-    const countTransactions = `SELECT COUNT(*) FROM ${finalQuery}`;
+    const countTransactions = `SELECT COUNT(*) FROM ${finalQueryCount}`;
     const [transactions, row] = await Promise.all([
       this.postgresService.query<TransactionTable>(
         queryTransactions,
@@ -55,7 +57,7 @@ export class SalesService {
       ),
       this.postgresService.query<TransactionTable>(
         countTransactions,
-        queryParams,
+        queryParamsCount,
       ),
     ]);
     return {
