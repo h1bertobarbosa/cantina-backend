@@ -14,6 +14,7 @@ import pgConfig from './postgres/config/pg.config';
 import { LoggerModule } from './logger/logger.module';
 import { BillingsModule } from './billings/billings.module';
 import { UsersModule } from './users/users.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { UsersModule } from './users/users.module';
     LoggerModule,
     BillingsModule,
     UsersModule,
+    DashboardModule,
   ],
   controllers: [AppController],
   providers: [AppService],
