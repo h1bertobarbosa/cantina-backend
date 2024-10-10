@@ -26,6 +26,10 @@ exports.up = (pgm) => {
       type: 'varchar(20)',
       notNull: true,
     },
+    slug: {
+      type: 'varchar(150)',
+      notNull: true,
+    },
     created_at: {
       type: 'timestamptz',
       notNull: true,
@@ -37,7 +41,7 @@ exports.up = (pgm) => {
       default: pgm.func('current_timestamp'),
     },
   });
-  pgm.createIndex('accounts', 'document', { unique: true });
+  pgm.createIndex('accounts', 'slug', { unique: true });
 };
 
 /**
