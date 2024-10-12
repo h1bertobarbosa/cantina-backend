@@ -1,9 +1,40 @@
+# **Cantina Backend**
+
+## **Descrição**
+
+O **Cantina Backend** é uma aplicação server-side desenvolvida para gerenciar as operações de uma cantina(pequeno comercio). O sistema oferece funcionalidades para controlar vendas inclusive a receber, gerando faturas, clientes e produtos, facilitando a gestão diária e aprimorando a eficiência operacional.
+
+## **Características Principais**
+
+- **Gerenciamento de Vendas:** Controle completo das transações realizadas na cantina.
+- **Faturamento:** Emissão e gerenciamento de faturas para clientes.
+- **Gestão de Clientes:** Cadastro e acompanhamento de informações dos clientes.
+- **Catálogo de Produtos:** Administração dos produtos disponíveis para venda.
+- **Autenticação:** Sistema seguro de login.
+
+## **Pré-requisitos**
+
+Antes de começar, certifique-se de ter instalado em sua máquina:
+
+- **Node.js** (versão 20 ou superior)
+- **npm**
+- **PostgreSQL**
+- **Docker**
+
+## Configuração do Banco de Dados
+
+Copiar no arquivo .env.example
+´DATABASE_URL=postgres://cantina:123456@localhost:5432/cantina´
+colar no terminal
+´export DATABASE_URL=postgres://cantina:123456@localhost:5432/cantina´
+subir o banco de dados com o comando docker
+´docker compose up -d db´
+ainda no terminal rodar os comandos para criar as tabelas
+´npm run migrate up´
+
 <p align="center">
   <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="200" alt="Nest Logo" /></a>
 </p>
-
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
 
   <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
     <p align="center">
@@ -29,7 +60,7 @@
 ## Installation
 
 ```bash
-$ npm install
+npm install
 ```
 
 ## Running the app
