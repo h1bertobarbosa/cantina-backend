@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
-import { AppService } from './app.service';
 import { PostgresModule } from './postgres/postgres.module';
 import { SigninModule } from './signin/signin.module';
 import { SignupModule } from './signup/signup.module';
@@ -36,6 +35,6 @@ import { DashboardModule } from './dashboard/dashboard.module';
     DashboardModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [],
 })
 export class AppModule {}
