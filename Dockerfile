@@ -29,6 +29,7 @@ COPY --from=builder /app/node_modules ./node_modules
 
 # Copia a build gerada na etapa anterior
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/.env.prd ./dist/.env
 
 # Define a variável de ambiente para produção
 ENV NODE_ENV=production

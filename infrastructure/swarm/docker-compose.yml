@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  traefik:
+    image: traefik:v2.10
+    command:
+      - '--providers.docker=true'
+      - '--providers.docker.swarmMode=true'
+      - '--entrypoints.web.address=:80'
+      - '--entrypoints.websecure.address=:443'
+      - '--certificatesResolvers.letsencrypt.acme.email=humberto.obarbosa@gmail.com'
+      - '--certificatesResolvers.letsencrypt.acme.storage=/acme/acme.json'
+      - '--certificatesResolvers.letsencrypt.acme.tlsChallenge=true'
+    networks:
+      - traefik_network
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - '/var/run/docker.sock:/var/run/docker.sock:ro'
+      - 'traefik_acme:/acme'
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+
+  postgres:
+    image: postgres:16
+    networks:
+      - app_network
+    environment:
+      POSTGRES_USER: cantina
+      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: cantina
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    deploy:
+      replicas: 1
+
+  cantinabackend:
+    image: h1bertobarbosa/cantina-backend:latest
+    networks:
+      - app_network
+      - traefik_network
+    environment:
+      NODE_ENV: production
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.cantinabackend.rule=Host(`cantina-backend.humbertoob.com.br`)'
+      - 'traefik.http.routers.cantinabackend.entrypoints=websecure'
+      - 'traefik.http.routers.cantinabackend.tls.certresolver=letsencrypt'
+      - 'traefik.http.services.cantinabackend.loadbalancer.server.port=3000'
+    deploy:
+      replicas: 3
+
+  frontend:
+    image: h1bertobarbosa/cantina-frontend:latest
+    networks:
+      - traefik_network
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.frontend.rule=Host(`cantina.humbertoob.com.br`)'
+      - 'traefik.http.routers.frontend.entrypoints=websecure'
+      - 'traefik.http.routers.frontend.tls.certresolver=letsencrypt'
+      - 'traefik.http.services.frontend.loadbalancer.server.port=80'
+    deploy:
+      replicas: 2
+
+networks:
+  traefik_network:
+    driver: overlay
+  app_network:
+    driver: overlay
+
+volumes:
+  pg_data:
+  traefik_acme:
