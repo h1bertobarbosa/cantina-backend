@@ -36,6 +36,8 @@ services:
       - pg_data:/var/lib/postgresql/data
     deploy:
       replicas: 1
+    ports:
+      - '5432:5432'
 
   cantinabackend:
     image: h1bertobarbosa/cantina-backend:latest
@@ -52,6 +54,8 @@ services:
       - 'traefik.http.services.cantinabackend.loadbalancer.server.port=3000'
     deploy:
       replicas: 3
+    ports:
+      - '3000:3000'
 
   frontend:
     image: h1bertobarbosa/cantina-frontend:latest
@@ -65,6 +69,8 @@ services:
       - 'traefik.http.services.frontend.loadbalancer.server.port=80'
     deploy:
       replicas: 2
+    ports:
+      - '80:80'
 
 networks:
   traefik_network:
