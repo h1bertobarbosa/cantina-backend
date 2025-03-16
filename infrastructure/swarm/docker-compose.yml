@@ -69,8 +69,6 @@ services:
       - 'traefik.http.services.frontend.loadbalancer.server.port=80'
     deploy:
       replicas: 2
-    ports:
-      - '80:80'
 
 networks:
   traefik_network:
