@@ -31,9 +31,6 @@ services:
       replicas: 3
     ports:
       - 3000:3000
-    depends_on:
-      db:
-        condition: service_healthy
 
 networks:
   app_network:
