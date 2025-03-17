@@ -13,7 +13,7 @@ services:
       - pg_data:/var/lib/postgresql/data
     deploy:
       replicas: 1
-    ports:
+    expose:
       - '5432:5432'
 
   cantinabackend:
@@ -24,7 +24,7 @@ services:
       NODE_ENV: production
     deploy:
       replicas: 3
-    ports:
+    expose:
       - '3000:3000'
 
 networks:
