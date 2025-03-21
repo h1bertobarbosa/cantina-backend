@@ -64,7 +64,7 @@ export class NewSaleService {
       if (aBilling) {
         const amount = aTransaction.getAmount() + parseFloat(aBilling.amount);
         await this.postgresService.query(
-          'INSERT INTO billing_items (id, billing_id, transaction_id, type) VALUES ($1, $2, $3, $4, $5)',
+          'INSERT INTO billing_items (id, billing_id, transaction_id, type, purchased_at) VALUES ($1, $2, $3, $4, $5)',
           [
             this.guidProvider.generate(),
             aBilling.id,
@@ -96,7 +96,7 @@ export class NewSaleService {
             ],
           );
         await this.postgresService.query(
-          'INSERT INTO billing_items (id, billing_id, transaction_id, type) VALUES ($1, $2, $3, $4, $5)',
+          'INSERT INTO billing_items (id, billing_id, transaction_id, type, purchased_at) VALUES ($1, $2, $3, $4, $5)',
           [
             this.guidProvider.generate(),
             newBilling.id,

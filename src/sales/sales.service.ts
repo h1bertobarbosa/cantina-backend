@@ -24,21 +24,28 @@ export class SalesService {
   }: QuerySaleDto) {
     const queryParams: (string | number | Date)[] = [accountId];
     const queryParts: string[] = [
-      `transactions WHERE account_id = $${queryParams.length}`,
+      `transactions JOIN billing_items ON transactions.id = billing_items.transaction_id WHERE transactions.account_id = $${queryParams.length}`,
     ];
 
     if (createdAt) {
-      queryParts.push(`AND created_at >= $${queryParams.length + 1}`);
+      queryParts.push(
+        `AND transactions.created_at >= $${queryParams.length + 1}`,
+      );
       queryParams.push(createdAt);
     }
     if (payedAt) {
-      queryParts.push(`AND payed_at >= $${queryParams.length + 1}`);
+      queryParts.push(
+        `AND transactions.payed_at >= $${queryParams.length + 1}`,
+      );
       queryParams.push(payedAt);
     }
     if (clientId) {
-      queryParts.push(`AND client_id = $${queryParams.length + 1}`);
+      queryParts.push(
+        `AND transactions.client_id = $${queryParams.length + 1}`,
+      );
       queryParams.push(clientId);
     }
+
     const finalQueryCount = queryParts.join(' ');
     const queryParamsCount = [...queryParams];
     queryParts.push(`ORDER BY $${queryParams.length + 1}`);
@@ -72,6 +79,7 @@ export class SalesService {
             transaction.created_at,
             transaction.updated_at,
             transaction.payed_at,
+            transaction.purchased_at,
           ),
       ),
       meta: {

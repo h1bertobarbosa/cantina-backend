@@ -19,6 +19,7 @@ export interface TransactionTable {
   created_at: Date;
   updated_at: Date;
   payed_at: Date;
+  purchased_at?: Date;
 }
 export default class PgTransactionsRepository
   implements TransactionsRepository

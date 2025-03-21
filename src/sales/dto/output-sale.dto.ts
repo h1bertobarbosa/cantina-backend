@@ -8,5 +8,6 @@ export default class OutputSaleDto {
     readonly createdAt: Date,
     readonly updatedAt: Date,
     readonly payedAt?: Date,
+    readonly purchasedAt?: Date,
   ) {}
 }
