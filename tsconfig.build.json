@@ -4,6 +4,6 @@
     "sourceMap": false,         
     "declaration": false
   },
-  "exclude": ["node_modules", "test", "dist", "**/*spec.ts", "logs"],
+  "exclude": ["node_modules", "test", "dist", "**/*spec.ts", "logs", "migrations"],
   "include": ["src/**/*"]
 }

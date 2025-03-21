@@ -36,6 +36,8 @@ export class NewSaleService {
       this.getClientName(createSaleDto.clientId, createSaleDto.accountId),
     ]);
     const quantity = Number(createSaleDto.quantity);
+    console.log(createSaleDto);
+    const price = createSaleDto.price || product.getPrice();
     const aTransaction = Transaction.getInstance({
       id: '',
       account_id: createSaleDto.accountId,
@@ -44,7 +46,7 @@ export class NewSaleService {
       client_name: clientName,
       description: CreateTransactionDescription.execute(product, quantity),
       payment_method: createSaleDto.paymentMethod,
-      amount: product.getPrice() * quantity,
+      amount: price * quantity,
       quantity: quantity,
     });
 
@@ -56,23 +58,26 @@ export class NewSaleService {
         createSaleDto.clientId,
         createSaleDto.accountId,
       );
-
+      const purchasedAt = createSaleDto.buyDate
+        ? new Date(createSaleDto.buyDate)
+        : new Date();
       if (aBilling) {
         const amount = aTransaction.getAmount() + parseFloat(aBilling.amount);
         await this.postgresService.query(
-          'INSERT INTO billing_items (id, billing_id, transaction_id, type) VALUES ($1, $2, $3, $4)',
+          'INSERT INTO billing_items (id, billing_id, transaction_id, type) VALUES ($1, $2, $3, $4, $5)',
           [
             this.guidProvider.generate(),
             aBilling.id,
             createdTransaction.getId(),
             BillingItemTypeEnum.DEBIT,
+            purchasedAt,
           ],
         );
         let newAmount = amount;
         if (Number(aBilling.amount_payed) > 0 && !Number(aBilling.amount)) {
           newAmount = Math.abs(amount - Number(aBilling.amount_payed));
         }
-        console.log(newAmount);
+
         await this.postgresService.query(
           'UPDATE billings SET amount =  $1, updated_at = $2, amount_payed = $3 WHERE id = $4',
           [newAmount, new Date(), 0, aBilling.id],
@@ -91,12 +96,13 @@ export class NewSaleService {
             ],
           );
         await this.postgresService.query(
-          'INSERT INTO billing_items (id, billing_id, transaction_id, type) VALUES ($1, $2, $3, $4)',
+          'INSERT INTO billing_items (id, billing_id, transaction_id, type) VALUES ($1, $2, $3, $4, $5)',
           [
             this.guidProvider.generate(),
             newBilling.id,
             createdTransaction.getId(),
             BillingItemTypeEnum.DEBIT,
+            purchasedAt,
           ],
         );
       }
