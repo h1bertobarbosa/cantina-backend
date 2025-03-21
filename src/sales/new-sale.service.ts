@@ -36,8 +36,8 @@ export class NewSaleService {
       this.getClientName(createSaleDto.clientId, createSaleDto.accountId),
     ]);
     const quantity = Number(createSaleDto.quantity);
-    console.log(createSaleDto);
     const price = createSaleDto.price || product.getPrice();
+    product.setPrice(price);
     const aTransaction = Transaction.getInstance({
       id: '',
       account_id: createSaleDto.accountId,

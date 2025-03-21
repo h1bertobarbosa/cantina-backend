@@ -10,6 +10,10 @@ export class Product {
     this.price = input.price;
   }
 
+  setPrice(price: number) {
+    this.price = price;
+  }
+
   getId() {
     return this.id;
   }
