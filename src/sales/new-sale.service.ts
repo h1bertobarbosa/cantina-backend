@@ -55,7 +55,7 @@ export class NewSaleService {
     const purchasedAt = createSaleDto.buyDate
       ? new Date(createSaleDto.buyDate)
       : new Date();
-    console.log(createSaleDto, purchasedAt);
+
     if (aTransaction.getPaymentMethod() === 'TO_RECEIVE') {
       const aBilling = await this.hasClientOpenBilling(
         createSaleDto.clientId,
