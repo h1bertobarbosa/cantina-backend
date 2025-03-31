@@ -76,7 +76,7 @@ export class BillingsService {
 
   async getBillingItems({ id, accountId }: InputGetById) {
     const items = await this.postgresService.query<BillingItemsTable>(
-      `SELECT bi.id,bi.type,bi.created_at,t.amount,t.client_name,t.description,t.payment_method 
+      `SELECT bi.id,bi.type,bi.created_at,t.amount,t.client_name,t.description,t.payment_method,bi.purchased_at 
        FROM billing_items bi
        JOIN transactions t ON t.id = bi.transaction_id
        WHERE bi.billing_id = $1 AND t.account_id = $2`,

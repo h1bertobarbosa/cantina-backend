@@ -9,6 +9,7 @@ export default class OutputBillingItemDto {
     readonly amount: number,
     readonly paymentMethod: string,
     readonly createdAt?: Date,
+    readonly purchasedAt?: Date,
   ) {}
 
   static fromTable(billing: BillingItemsTable) {
@@ -20,6 +21,7 @@ export default class OutputBillingItemDto {
       Number(billing.amount),
       billing.payment_method,
       billing.created_at,
+      billing.purchased_at,
     );
   }
 }

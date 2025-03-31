@@ -52,15 +52,16 @@ export class NewSaleService {
 
     const createdTransaction =
       await this.transactionRepository.save(aTransaction);
-
+    const purchasedAt = createSaleDto.buyDate
+      ? new Date(createSaleDto.buyDate)
+      : new Date();
+    console.log(createSaleDto, purchasedAt);
     if (aTransaction.getPaymentMethod() === 'TO_RECEIVE') {
       const aBilling = await this.hasClientOpenBilling(
         createSaleDto.clientId,
         createSaleDto.accountId,
       );
-      const purchasedAt = createSaleDto.buyDate
-        ? new Date(createSaleDto.buyDate)
-        : new Date();
+
       if (aBilling) {
         const amount = aTransaction.getAmount() + parseFloat(aBilling.amount);
         await this.postgresService.query(
@@ -70,7 +71,7 @@ export class NewSaleService {
             aBilling.id,
             createdTransaction.getId(),
             BillingItemTypeEnum.DEBIT,
-            purchasedAt,
+            purchasedAt.toISOString(),
           ],
         );
         let newAmount = amount;
@@ -102,7 +103,7 @@ export class NewSaleService {
             newBilling.id,
             createdTransaction.getId(),
             BillingItemTypeEnum.DEBIT,
-            purchasedAt,
+            purchasedAt.toISOString(),
           ],
         );
       }
@@ -116,6 +117,7 @@ export class NewSaleService {
       createdTransaction.getCreatedAt(),
       createdTransaction.getUpdatedAt(),
       createdTransaction.getPayedAt(),
+      purchasedAt,
     );
   }
 
