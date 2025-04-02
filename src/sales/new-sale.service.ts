@@ -31,52 +31,70 @@ export class NewSaleService {
     @Inject(GUID_PROVIDER) private readonly guidProvider: GuidProvider,
   ) {}
   async execute(createSaleDto: CreateSaleDto): Promise<OutputSaleDto> {
-    const [product, clientName] = await Promise.all([
-      this.getProduct(createSaleDto.productId, createSaleDto.accountId),
-      this.getClientName(createSaleDto.clientId, createSaleDto.accountId),
-    ]);
-    const quantity = Number(createSaleDto.quantity);
-    const price = createSaleDto.price || product.getPrice();
-    product.setPrice(price);
-    const aTransaction = Transaction.getInstance({
-      id: '',
-      account_id: createSaleDto.accountId,
-      client_id: createSaleDto.clientId,
-      product_id: createSaleDto.productId,
-      client_name: clientName,
-      description: CreateTransactionDescription.execute(product, quantity),
-      payment_method: createSaleDto.paymentMethod,
-      amount: price * quantity,
-      quantity: quantity,
-    });
-
-    const createdTransaction =
-      await this.transactionRepository.save(aTransaction);
+    const products = await Promise.all(
+      createSaleDto.items.map((item) =>
+        this.getProduct(item.productId, createSaleDto.accountId),
+      ),
+    );
+    const clientName = await this.getClientName(
+      createSaleDto.clientId,
+      createSaleDto.accountId,
+    );
     const purchasedAt = createSaleDto.buyDate
       ? new Date(createSaleDto.buyDate)
       : new Date();
 
-    if (aTransaction.getPaymentMethod() === 'TO_RECEIVE') {
+    const transactions = [];
+    for (const item of createSaleDto.items) {
+      const product = products.find((p) => p.getId() === item.productId);
+      const quantity = Number(item.quantity);
+      const price = item.price || product.getPrice();
+      product.setPrice(price);
+      transactions.push(
+        Transaction.getInstance({
+          id: '',
+          account_id: createSaleDto.accountId,
+          client_id: createSaleDto.clientId,
+          product_id: product.getId(),
+          client_name: clientName,
+          description: CreateTransactionDescription.execute(product, quantity),
+          payment_method: createSaleDto.paymentMethod,
+          amount: price * quantity,
+          quantity: quantity,
+        }),
+      );
+    }
+
+    const createdTransactions = await Promise.all(
+      transactions.map((transaction) =>
+        this.transactionRepository.save(transaction),
+      ),
+    );
+
+    if (createSaleDto.paymentMethod === 'TO_RECEIVE') {
       const aBilling = await this.hasClientOpenBilling(
         createSaleDto.clientId,
         createSaleDto.accountId,
       );
 
       if (aBilling) {
-        const amount = aTransaction.getAmount() + parseFloat(aBilling.amount);
-        await this.postgresService.query(
-          'INSERT INTO billing_items (id, billing_id, transaction_id, type, purchased_at) VALUES ($1, $2, $3, $4, $5)',
-          [
-            this.guidProvider.generate(),
-            aBilling.id,
-            createdTransaction.getId(),
-            BillingItemTypeEnum.DEBIT,
-            purchasedAt.toISOString(),
-          ],
-        );
-        let newAmount = amount;
-        if (Number(aBilling.amount_payed) > 0 && !Number(aBilling.amount)) {
-          newAmount = Math.abs(amount - Number(aBilling.amount_payed));
+        let newAmount = 0;
+        for (const aTransaction of createdTransactions) {
+          const amount = aTransaction.getAmount() + parseFloat(aBilling.amount);
+          await this.postgresService.query(
+            'INSERT INTO billing_items (id, billing_id, transaction_id, type, purchased_at) VALUES ($1, $2, $3, $4, $5)',
+            [
+              this.guidProvider.generate(),
+              aBilling.id,
+              aTransaction.getId(),
+              BillingItemTypeEnum.DEBIT,
+              purchasedAt.toISOString(),
+            ],
+          );
+          newAmount = amount;
+          if (Number(aBilling.amount_payed) > 0 && !Number(aBilling.amount)) {
+            newAmount = Math.abs(amount - Number(aBilling.amount_payed));
+          }
         }
 
         await this.postgresService.query(
@@ -84,6 +102,10 @@ export class NewSaleService {
           [newAmount, new Date(), 0, aBilling.id],
         );
       } else {
+        let amountBilling = 0;
+        createdTransactions.forEach((aTransaction) => {
+          amountBilling += aTransaction.getAmount();
+        });
         const [newBilling] =
           await this.postgresService.query<BillingItemsTable>(
             'INSERT INTO billings (id, client_id, account_id,description,amount,payment_method) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
@@ -92,31 +114,42 @@ export class NewSaleService {
               createSaleDto.clientId,
               createSaleDto.accountId,
               `Fatura mes: ${new Date().getMonth()}/${new Date().getFullYear()}`,
-              aTransaction.getAmount(),
-              aTransaction.getPaymentMethod(),
+              amountBilling,
+              createSaleDto.paymentMethod,
             ],
           );
-        await this.postgresService.query(
-          'INSERT INTO billing_items (id, billing_id, transaction_id, type, purchased_at) VALUES ($1, $2, $3, $4, $5)',
-          [
-            this.guidProvider.generate(),
-            newBilling.id,
-            createdTransaction.getId(),
-            BillingItemTypeEnum.DEBIT,
-            purchasedAt.toISOString(),
-          ],
-        );
+        for (const aTransaction of createdTransactions) {
+          await this.postgresService.query(
+            'INSERT INTO billing_items (id, billing_id, transaction_id, type, purchased_at) VALUES ($1, $2, $3, $4, $5)',
+            [
+              this.guidProvider.generate(),
+              newBilling.id,
+              aTransaction.getId(),
+              BillingItemTypeEnum.DEBIT,
+              purchasedAt.toISOString(),
+            ],
+          );
+        }
       }
     }
+
+    const totalTransactionsAmount = createdTransactions.reduce(
+      (acc, aTransaction) => {
+        acc += aTransaction.getAmount();
+        return acc;
+      },
+      0,
+    );
+
     return new OutputSaleDto(
-      createdTransaction.getId(),
-      createdTransaction.getClientName(),
-      createdTransaction.getDescription(),
-      createdTransaction.getPaymentMethod(),
-      createdTransaction.getAmount(),
-      createdTransaction.getCreatedAt(),
-      createdTransaction.getUpdatedAt(),
-      createdTransaction.getPayedAt(),
+      createdTransactions[0].getId(),
+      createdTransactions[0].getClientName(),
+      createdTransactions[0].getDescription(),
+      createdTransactions[0].getPaymentMethod(),
+      totalTransactionsAmount,
+      createdTransactions[0].getCreatedAt(),
+      createdTransactions[0].getUpdatedAt(),
+      createdTransactions[0].getPayedAt(),
       purchasedAt,
     );
   }

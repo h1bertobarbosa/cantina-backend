@@ -6,21 +6,28 @@ import {
   IsOptional,
   IsString,
 } from 'class-validator';
-export class CreateSaleDto {
+
+class Item {
   @ApiProperty()
   @IsString()
   @IsNotEmpty()
   productId: string;
-  @ApiProperty()
-  @IsString()
-  @IsNotEmpty()
-  clientId: string;
   @ApiProperty()
   @IsNumber()
   price: number;
   @ApiProperty()
   @IsNumber()
   quantity: number;
+}
+
+export class CreateSaleDto {
+  @ApiProperty({ type: [Item] })
+  @IsNotEmpty()
+  items: Item[];
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  clientId: string;
   @ApiProperty()
   @IsString()
   @IsNotEmpty()
@@ -29,7 +36,6 @@ export class CreateSaleDto {
   @IsDateString()
   @IsOptional()
   buyDate: string;
-
   @IsOptional()
   accountId: string;
 }
