@@ -1,4 +1,9 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  LoggerService,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateSaleDto } from './dto/create-sale.dto';
 
 import { Transaction } from 'src/transactions/entities/transaction.entity';
@@ -21,6 +26,7 @@ import {
   GUID_PROVIDER,
   GuidProvider,
 } from 'src/libs/src/guid/contract/guid-provider.interface';
+import { LOGGER } from '../logger/logger.const';
 
 @Injectable()
 export class NewSaleService {
@@ -29,6 +35,7 @@ export class NewSaleService {
     @Inject(TRANSACTIONS_REPOSITORY)
     private readonly transactionRepository: TransactionsRepository,
     @Inject(GUID_PROVIDER) private readonly guidProvider: GuidProvider,
+    @Inject(LOGGER) private readonly logger: LoggerService,
   ) {}
   async execute(createSaleDto: CreateSaleDto): Promise<OutputSaleDto> {
     const products = await Promise.all(
@@ -40,8 +47,9 @@ export class NewSaleService {
       createSaleDto.clientId,
       createSaleDto.accountId,
     );
+
     const purchasedAt = createSaleDto.buyDate
-      ? new Date(createSaleDto.buyDate)
+      ? new Date(`${createSaleDto.buyDate}T12:00:00Z`)
       : new Date();
 
     const transactions = [];
@@ -70,6 +78,11 @@ export class NewSaleService {
         this.transactionRepository.save(transaction),
       ),
     );
+    this.logger.log(
+      `Created transactions: ${JSON.stringify(
+        createdTransactions.map((transaction) => transaction.getId()),
+      )}`,
+    );
 
     if (createSaleDto.paymentMethod === 'TO_RECEIVE') {
       const aBilling = await this.hasClientOpenBilling(
@@ -78,6 +91,9 @@ export class NewSaleService {
       );
 
       if (aBilling) {
+        this.logger.log(
+          `Client ${createSaleDto.clientId} has open billing: ${aBilling.id}`,
+        );
         let newAmount = 0;
         for (const aTransaction of createdTransactions) {
           const amount = aTransaction.getAmount() + parseFloat(aBilling.amount);
@@ -94,12 +110,18 @@ export class NewSaleService {
           newAmount = amount;
           if (Number(aBilling.amount_payed) > 0 && !Number(aBilling.amount)) {
             newAmount = Math.abs(amount - Number(aBilling.amount_payed));
+            this.logger.log(
+              `New amount: ${newAmount} - Amount payed: ${aBilling.amount_payed}`,
+            );
           }
         }
 
         await this.postgresService.query(
           'UPDATE billings SET amount =  $1, updated_at = $2, amount_payed = $3 WHERE id = $4',
           [newAmount, new Date(), 0, aBilling.id],
+        );
+        this.logger.log(
+          `Updated billing ${aBilling.id} with amount: ${newAmount}`,
         );
       } else {
         let amountBilling = 0;
@@ -118,6 +140,9 @@ export class NewSaleService {
               createSaleDto.paymentMethod,
             ],
           );
+        this.logger.log(
+          `Created new billing ${newBilling.id} for client ${createSaleDto.clientId}`,
+        );
         for (const aTransaction of createdTransactions) {
           await this.postgresService.query(
             'INSERT INTO billing_items (id, billing_id, transaction_id, type, purchased_at) VALUES ($1, $2, $3, $4, $5)',
@@ -128,6 +153,9 @@ export class NewSaleService {
               BillingItemTypeEnum.DEBIT,
               purchasedAt.toISOString(),
             ],
+          );
+          this.logger.log(
+            `Created billing item ${aTransaction.getId()} for billing ${newBilling.id}`,
           );
         }
       }
