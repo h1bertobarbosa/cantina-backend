@@ -110,10 +110,17 @@ export class SalesService {
     );
   }
 
-  async remove({ id, accountId }: InputGetById) {
+  async remove({ id }: InputGetById) {
     await this.postgresService.query<TransactionTable>(
-      `DELETE FROM transactions WHERE id = $1 AND account_id = $2`,
-      [id, accountId],
+      'DELETE FROM billing_items WHERE id = $1',
+      [id],
+    );
+    await this.postgresService.query<TransactionTable>(
+      `DELETE FROM transactions t
+USING billing_items b
+WHERE t.id = b.transaction_id
+AND b.id = $1;`,
+      [id],
     );
   }
 }
