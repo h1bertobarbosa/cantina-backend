@@ -5,6 +5,7 @@ import { User, UserSession } from 'src/signin/decorators/user.decorator';
 import { QueryBillingDto } from './dto/query-billing.dto';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import PayBillingService from './pay-billing.service';
+import { UpdatePurchaseDateDto } from './dto/update-purchase-date-billing.dto';
 
 @ApiBearerAuth()
 @ApiTags('billings')
@@ -50,5 +51,16 @@ export class BillingsController {
       accountId: user.accountId,
       id,
     });
+  }
+
+  @Patch('items/:id/update-purchase-date')
+  async updatePurchaseDate(
+    @Param('id') id: string,
+    @Body() updateBillingDto: UpdatePurchaseDateDto,
+  ) {
+    return this.billingsService.updatePurchaseDate(
+      id,
+      updateBillingDto.purchaseDate,
+    );
   }
 }

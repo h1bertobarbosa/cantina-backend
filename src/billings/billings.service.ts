@@ -84,4 +84,16 @@ export class BillingsService {
     );
     return items.map((item) => OutputBillingItemDto.fromTable(item));
   }
+
+  async updatePurchaseDate(id: string, date: string) {
+    const purchasedAt = new Date(`${date.split('T')[0]}T15:00:00Z`);
+    await this.postgresService.query(
+      `UPDATE billing_items SET purchased_at = $1 WHERE id = $2`,
+      [purchasedAt, id],
+    );
+    return {
+      id,
+      purchased_at: purchasedAt,
+    };
+  }
 }
