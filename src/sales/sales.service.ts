@@ -1,9 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 
 import { PostgresService } from 'src/postgres/postgres.service';
 import OutputSaleDto from './dto/output-sale.dto';
 import { TransactionTable } from 'src/transactions/repository/pg-transactions.repository';
 import { QuerySaleDto } from './dto/query-sale.dto';
+import {
+  BillingItemsTable,
+  BillingsTable,
+} from '../billings/repository/ports/billint-table.interface';
 export interface InputGetById {
   id: string;
   accountId: string;
@@ -55,8 +59,8 @@ export class SalesService {
     queryParts.push(`OFFSET $${queryParams.length + 1}`);
     queryParams.push((page - 1) * perPage);
     const finalQuery = queryParts.join(' ');
-    const queryTransactions = `SELECT * FROM ${finalQuery}`;
-    const countTransactions = `SELECT COUNT(*) FROM ${finalQueryCount}`;
+    const queryTransactions = `SELECT transactions.* FROM ${finalQuery}`;
+    const countTransactions = `SELECT COUNT(transactions.*) FROM ${finalQueryCount}`;
     const [transactions, row] = await Promise.all([
       this.postgresService.query<TransactionTable>(
         queryTransactions,
@@ -111,16 +115,41 @@ export class SalesService {
   }
 
   async remove({ id }: InputGetById) {
-    await this.postgresService.query<TransactionTable>(
-      'DELETE FROM billing_items WHERE id = $1',
+    const [billingItem] = await this.postgresService.query<BillingItemsTable>(
+      `SELECT * FROM billing_items WHERE transaction_id = $1`,
       [id],
     );
-    await this.postgresService.query<TransactionTable>(
-      `DELETE FROM transactions t
-USING billing_items b
-WHERE t.id = b.transaction_id
-AND b.id = $1;`,
-      [id],
-    );
+
+    if (billingItem) {
+      Logger.log(
+        `Deleting transaction ${id} and billing item ${billingItem?.id}`,
+      );
+      await this.postgresService.query<TransactionTable>(
+        'DELETE FROM billing_items WHERE transaction_id = $1',
+        [id],
+      );
+      await this.postgresService.query<TransactionTable>(
+        'DELETE FROM transactions WHERE id = $1',
+        [id],
+      );
+
+      const billingId = billingItem.billing_id;
+      const transactions = await this.postgresService.query<TransactionTable>(
+        `SELECT t.* FROM transactions t 
+        JOIN  billing_items b ON t.id = b.transaction_id
+        WHERE b.billing_id = $1`,
+        [billingId],
+      );
+      const billingTotal = transactions.reduce((acc, transaction) => {
+        acc += Number(transaction.amount);
+        return acc;
+      }, 0);
+
+      await this.postgresService.query<BillingsTable>(
+        `UPDATE billings SET amount = $1 WHERE id = $2`,
+        [billingTotal, billingId],
+      );
+      Logger.log(`Updated billing ${billingId} with new total ${billingTotal}`);
+    }
   }
 }
