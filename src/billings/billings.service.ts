@@ -18,8 +18,7 @@ export class BillingsService {
   async findAll({
     accountId,
     clientId,
-    orderBy,
-    orderDir,
+
     perPage,
     page,
   }: QueryBillingDto) {
@@ -34,15 +33,13 @@ export class BillingsService {
     }
     const finalQueryCount = queryParts.join(' ');
     const queryParamsCount = [...queryParams];
-    queryParts.push(`ORDER BY $${queryParams.length + 1}`);
-    queryParams.push(`${orderBy} ${orderDir.toUpperCase()}`);
-    queryParts.push(`LIMIT $${queryParams.length + 1}`);
-    queryParams.push(perPage);
-    queryParts.push(`OFFSET $${queryParams.length + 1}`);
-    queryParams.push((page - 1) * perPage);
+    queryParts.push(`ORDER BY clients.name ASC`);
+    queryParts.push(`LIMIT ${perPage}`);
+    queryParts.push(`OFFSET ${(page - 1) * perPage}`);
     const finalQuery = queryParts.join(' ');
-    const queryBillings = `SELECT billings.*,clients.name FROM ${finalQuery} `;
+    const queryBillings = `SELECT billings.*,clients.name FROM ${finalQuery}`;
     const countBillings = `SELECT COUNT(billings.*) FROM ${finalQueryCount}`;
+
     const [billings, row] = await Promise.all([
       this.postgresService.query<BillingsTable>(queryBillings, queryParams),
       this.postgresService.query<BillingsTable>(
@@ -50,7 +47,6 @@ export class BillingsService {
         queryParamsCount,
       ),
     ]);
-
     return {
       data: billings.map((billing) => OutputBillingDto.fromTable(billing)),
       meta: {

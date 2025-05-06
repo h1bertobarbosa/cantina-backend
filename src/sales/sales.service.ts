@@ -52,12 +52,9 @@ export class SalesService {
 
     const finalQueryCount = queryParts.join(' ');
     const queryParamsCount = [...queryParams];
-    queryParts.push(`ORDER BY $${queryParams.length + 1}`);
-    queryParams.push(`${orderBy} ${orderDir.toUpperCase()}`);
-    queryParts.push(`LIMIT $${queryParams.length + 1}`);
-    queryParams.push(perPage);
-    queryParts.push(`OFFSET $${queryParams.length + 1}`);
-    queryParams.push((page - 1) * perPage);
+    queryParts.push(`ORDER BY ${orderBy} ${orderDir.toUpperCase()}`);
+    queryParts.push(`LIMIT ${perPage}`);
+    queryParts.push(`OFFSET ${(page - 1) * perPage}`);
     const finalQuery = queryParts.join(' ');
     const queryTransactions = `SELECT transactions.* FROM ${finalQuery}`;
     const countTransactions = `SELECT COUNT(transactions.*) FROM ${finalQueryCount}`;
