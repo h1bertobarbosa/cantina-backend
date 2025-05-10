@@ -18,7 +18,7 @@ export class BillingsService {
   async findAll({
     accountId,
     clientId,
-
+    paymentMethod,
     perPage,
     page,
   }: QueryBillingDto) {
@@ -30,6 +30,12 @@ export class BillingsService {
     if (clientId) {
       queryParts.push(`AND client_id = $${queryParams.length + 1}`);
       queryParams.push(clientId);
+    }
+    if (paymentMethod) {
+      queryParts.push(
+        `AND billings.payment_method = $${queryParams.length + 1}`,
+      );
+      queryParams.push(paymentMethod);
     }
     const finalQueryCount = queryParts.join(' ');
     const queryParamsCount = [...queryParams];
