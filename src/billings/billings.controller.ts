@@ -1,4 +1,12 @@
-import { Controller, Get, Body, Patch, Param, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Body,
+  Patch,
+  Param,
+  Query,
+  Delete,
+} from '@nestjs/common';
 import { BillingsService } from './billings.service';
 import { PayBillingDto } from './dto/pay-billing.dto';
 import { User, UserSession } from 'src/signin/decorators/user.decorator';
@@ -6,6 +14,7 @@ import { QueryBillingDto } from './dto/query-billing.dto';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import PayBillingService from './pay-billing.service';
 import { UpdatePurchaseDateDto } from './dto/update-purchase-date-billing.dto';
+import { DeleteBillingDto } from './dto/delete-billing.dto';
 
 @ApiBearerAuth()
 @ApiTags('billings')
@@ -46,7 +55,7 @@ export class BillingsController {
   }
 
   @Get(':id/items')
-  async billingItems(@Param('id') id: string, @User() user) {
+  async billingItems(@Param('id') id: string, @User() user: UserSession) {
     return this.billingsService.getBillingItems({
       accountId: user.accountId,
       id,
@@ -62,5 +71,19 @@ export class BillingsController {
       id,
       updateBillingDto.purchaseDate,
     );
+  }
+
+  @Delete(':id')
+  async delete(
+    @Param('id') id: string,
+    @Body() body: DeleteBillingDto,
+    @User() user: UserSession,
+  ) {
+    await this.billingsService.deleteBilling({
+      id,
+      accountId: user.accountId,
+      userId: user.sub,
+      obs: body.obs,
+    });
   }
 }

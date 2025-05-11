@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  LoggerService,
+  NotFoundException,
+} from '@nestjs/common';
 import { QueryBillingDto } from './dto/query-billing.dto';
 import { PostgresService } from 'src/postgres/postgres.service';
 import {
@@ -7,14 +12,28 @@ import {
 } from './repository/ports/billint-table.interface';
 import OutputBillingDto from './dto/output-billing.dto';
 import OutputBillingItemDto from './dto/output-billing-item.dto';
+import { TransactionTable } from '../transactions/repository/pg-transactions.repository';
+import {
+  GUID_PROVIDER,
+  GuidProvider,
+} from '../libs/src/guid/contract/guid-provider.interface';
+import { LOGGER } from '../logger/logger.const';
 
 export interface InputGetById {
   id: string;
   accountId: string;
 }
+export interface DeleteBillingParams extends InputGetById {
+  userId: string;
+  obs: string;
+}
 @Injectable()
 export class BillingsService {
-  constructor(private readonly postgresService: PostgresService) {}
+  constructor(
+    private readonly postgresService: PostgresService,
+    @Inject(GUID_PROVIDER) private readonly guidProvider: GuidProvider,
+    @Inject(LOGGER) private readonly logger: LoggerService,
+  ) {}
   async findAll({
     accountId,
     clientId,
@@ -97,5 +116,52 @@ export class BillingsService {
       id,
       purchased_at: purchasedAt,
     };
+  }
+
+  async deleteBilling({ id, accountId, userId, obs }: DeleteBillingParams) {
+    const [billing] = await this.postgresService.query<BillingsTable>(
+      `SELECT * FROM billings WHERE id = $1`,
+      [id],
+    );
+    if (!billing || billing.account_id !== accountId) {
+      this.logger.log(
+        `Billing not found for accountId: ${accountId}, id: ${id}`,
+      );
+      throw new NotFoundException('Billing not found');
+    }
+
+    const transactions = await this.postgresService.query<TransactionTable>(
+      `SELECT t.id,t.client_id,t.client_name,t.description,t.payment_method,t.amount,t.quantity,t.payed_at FROM transactions t 
+           JOIN  billing_items b ON t.id = b.transaction_id
+           WHERE b.billing_id = $1`,
+      [id],
+    );
+    const transactionIds = transactions.map((transaction) => transaction.id);
+    await this.postgresService.query(
+      'DELETE FROM transactions WHERE id = ANY($1)',
+      [transactionIds],
+    );
+    this.logger.log(`Deleting transactions ${transactionIds.join(', ')}`);
+    await this.postgresService.query(
+      'DELETE FROM billing_items WHERE billing_id = $1',
+      [id],
+    );
+    this.logger.log(`Deleting billing items for billing ${id}`);
+    await this.postgresService.query('DELETE FROM billings WHERE id = $1', [
+      id,
+    ]);
+    this.logger.log(`Deleting billing ${id}`);
+    await this.postgresService.query(
+      'INSERT INTO logs (id, account_id, user_id, data, log_type, obs) VALUES ($1, $2, $3, $4, $5, $6)',
+      [
+        this.guidProvider.generate(),
+        billing.account_id,
+        userId,
+        JSON.stringify(transactions),
+        'delete_billing',
+        obs,
+      ],
+    );
+    this.logger.log(`Inserting log for billing ${id} with user ${userId}`);
   }
 }
