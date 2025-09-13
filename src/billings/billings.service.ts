@@ -18,6 +18,7 @@ import {
   GuidProvider,
 } from '../libs/src/guid/contract/guid-provider.interface';
 import { LOGGER } from '../logger/logger.const';
+import { ClientTable } from '../clients/clients.service';
 
 export interface InputGetById {
   id: string;
@@ -95,6 +96,39 @@ export class BillingsService {
     return OutputBillingDto.fromTable(billing);
   }
 
+  async receiptDetails({ id, accountId }: InputGetById) {
+    const [billing] = await this.postgresService.query<ClientTable>(
+      `SELECT b.*,c.name,c.email,c.phone FROM billings b
+      JOIN clients c ON c.id = b.client_id
+      WHERE b.id = $1 AND b.account_id = $2`,
+      [id, accountId],
+    );
+    if (!billing) {
+      throw new NotFoundException('Billing not found');
+    }
+
+    const items = await this.postgresService.query<BillingItemsTable>(
+      `SELECT bi.id, t.description, t.amount, bi.purchased_at
+     FROM billing_items bi
+     JOIN transactions t ON t.id = bi.transaction_id
+     WHERE bi.billing_id = $1`,
+      [id],
+    );
+
+    return {
+      client: {
+        name: billing.name,
+        email: billing.email,
+        phone: billing.phone,
+      },
+      items: items.map((item) => ({
+        id: item.id,
+        description: item.description,
+        amount: item.amount,
+        purchasedAt: item.purchased_at,
+      })),
+    };
+  }
   async getBillingItems({ id, accountId }: InputGetById) {
     const items = await this.postgresService.query<BillingItemsTable>(
       `SELECT bi.id,bi.type,bi.created_at,t.amount,t.client_name,t.description,t.payment_method,bi.purchased_at 

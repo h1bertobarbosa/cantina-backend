@@ -9,6 +9,7 @@ import { PostgresService } from 'src/postgres/postgres.service';
 import { OutputClientDto } from './dto/output-client.dto';
 import { QueryClientDto } from './dto/query-client.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
+import { QueryHistoryChargeDto } from './dto/query-history-charge.dto';
 export interface ClientTable {
   id: string;
   account_id: string;
@@ -41,21 +42,32 @@ export class ClientsService {
     );
     return new OutputClientDto(newClient);
   }
+
   async findAll(input: QueryClientDto) {
+    const whereParts = ['account_id = $1'];
+    const params: (string | number)[] = [input.accountId];
+
+    if (input.search) {
+      whereParts.push('(name ILIKE $2 OR email ILIKE $2 OR phone ILIKE $2)');
+      params.push(`%${input.search}%`);
+    }
+
+    // Calculate parameter indexes for pagination
+    const limitIdx = params.length + 1;
+    const offsetIdx = params.length + 2;
+
+    const whereClause = whereParts.join(' AND ');
+    const orderClause = `${input.sortBy} ${input.orderDir.toUpperCase()}`;
+
+    const query = `SELECT * FROM clients WHERE ${whereClause} ORDER BY ${orderClause} LIMIT $${limitIdx} OFFSET $${offsetIdx}`;
+    params.push(input.perPage, (input.page - 1) * input.perPage);
+
+    const countQuery = `SELECT COUNT(*) FROM clients WHERE ${whereClause}`;
+    const countParams = params.slice(0, params.length - 2);
+
     const [clients, row] = await Promise.all([
-      this.postgresService.query<ClientTable>(
-        'SELECT * FROM clients WHERE account_id = $1 ORDER BY $2 LIMIT $3 OFFSET $4',
-        [
-          input.accountId,
-          `${input.orderBy} ${input.orderDir.toUpperCase()}`,
-          input.perPage,
-          (input.page - 1) * input.perPage,
-        ],
-      ),
-      this.postgresService.query<ClientTable>(
-        'SELECT COUNT(*) FROM clients WHERE account_id = $1',
-        [input.accountId],
-      ),
+      this.postgresService.query<ClientTable>(query, params),
+      this.postgresService.query<ClientTable>(countQuery, countParams),
     ]);
 
     return {
@@ -67,7 +79,6 @@ export class ClientsService {
       },
     };
   }
-
   async findOne({ id, accountId }: InputGetById) {
     const [client] = await this.postgresService.query<ClientTable>(
       `SELECT * FROM clients WHERE id = $1`,
@@ -98,5 +109,96 @@ export class ClientsService {
       `DELETE FROM clients WHERE id = $1 AND account_id = $2`,
       [id, accountId],
     );
+  }
+
+  async registerCharge(input: {
+    accountId: string;
+    clientId: string;
+    userId: string;
+    amount: number;
+    description: string;
+    ocurrencyDate?: Date;
+  }) {
+    try {
+      const [newCharge] = await this.postgresService.query(
+        `INSERT INTO billing_history (id, account_id, user_id, client_id, amount, description,ocurrency_date, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8,$9) RETURNING *`,
+        [
+          this.guidProvider.generate(),
+          input.accountId,
+          input.userId,
+          input.clientId,
+          input.amount,
+          input.description,
+          input.ocurrencyDate,
+          new Date(),
+          new Date(),
+        ],
+      );
+      return newCharge;
+    } catch (error) {
+      console.error('Error registering charge:', error);
+    }
+  }
+
+  async findAllHistoryCharge(input: QueryHistoryChargeDto) {
+    try {
+      const whereParts = ['bh.account_id = $1'];
+      const params: (string | number)[] = [input.accountId];
+
+      if (input.clientId) {
+        whereParts.push('bh.client_id = $2');
+        params.push(input.clientId);
+      }
+
+      // Calculate parameter indexes for pagination
+      const limitIdx = params.length + 1;
+      const offsetIdx = params.length + 2;
+
+      const whereClause = whereParts.join(' AND ');
+      const orderClause = `${input.sortBy || 'bh.ocurrency_date'} ${input.orderDir?.toUpperCase() || 'DESC'}`;
+
+      const query = `
+    SELECT bh.id, bh.description, bh.amount, bh.ocurrency_date AS created_at, c.id AS client_id, c.name AS client_name
+    FROM billing_history bh
+    JOIN clients c ON c.id = bh.client_id
+    WHERE ${whereClause}
+    ORDER BY ${orderClause}
+    LIMIT $${limitIdx} OFFSET $${offsetIdx}
+  `;
+      params.push(input.perPage, (input.page - 1) * input.perPage);
+
+      const countQuery = `
+    SELECT COUNT(bh.*) FROM billing_history bh
+    JOIN clients c ON c.id = bh.client_id
+    WHERE ${whereClause}
+  `;
+      const countParams = params.slice(0, params.length - 2);
+
+      const [charges, row] = await Promise.all([
+        this.postgresService.query(query, params),
+        this.postgresService.query(countQuery, countParams),
+      ]);
+
+      return {
+        data: (charges as any).map((charge) => ({
+          id: charge.id,
+          description: charge.description,
+          amount: Number(charge.amount),
+          created_at: charge.created_at,
+          client: {
+            id: charge.client_id,
+            name: charge.client_name,
+          },
+        })),
+        meta: {
+          total: Number(row[0]['count']),
+          page: input.page,
+          perPage: input.perPage,
+        },
+      };
+    } catch (error) {
+      console.error(error);
+      throw error;
+    }
   }
 }

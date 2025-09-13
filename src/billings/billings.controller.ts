@@ -40,6 +40,14 @@ export class BillingsController {
       id,
     });
   }
+  // /billings/{id}/receipt-details
+  @Get(':id/receipt-details')
+  receiptDetails(@Param('id') id: string, @User() user) {
+    return this.billingsService.receiptDetails({
+      accountId: user.accountId,
+      id,
+    });
+  }
 
   @Patch(':id/pay')
   async payBilling(

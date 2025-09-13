@@ -2,10 +2,10 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsOptional } from 'class-validator';
 
-export class QueryClientDto {
+export class QueryHistoryChargeDto {
   @ApiPropertyOptional()
   @IsOptional()
-  search?: string;
+  clientId?: string;
   @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)
@@ -21,11 +21,11 @@ export class QueryClientDto {
   @IsOptional()
   orderDir?: 'asc' | 'desc';
   accountId: string;
-  constructor(partial: Partial<QueryClientDto>) {
+  constructor(partial: Partial<QueryHistoryChargeDto>) {
     Object.assign(this, partial);
     this.perPage = this.perPage || 10;
     this.page = this.page || 1;
     this.orderDir = this.orderDir || 'asc';
-    this.sortBy = this.sortBy || 'name';
+    this.sortBy = `bh.${this.sortBy}` || 'bh.created_at';
   }
 }
