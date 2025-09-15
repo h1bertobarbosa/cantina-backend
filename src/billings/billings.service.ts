@@ -116,14 +116,16 @@ export class BillingsService {
     if (!billing) {
       throw new NotFoundException('Billing not found');
     }
-    const totalBilling = items
-      .filter(
-        (item) => !String(item.description).toLowerCase().includes('crédito'),
-      )
-      .reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
+    const totalBilling = items.reduce((sum, item) => {
+      const isCredito = String(item.description)
+        .toLowerCase()
+        .includes('crédito');
+      const amount = parseFloat(item.amount) || 0;
+      return isCredito ? sum - amount : sum + amount;
+    }, 0);
 
     await this.postgresService.query(
-      `UPDATE billings SET amount = $1 WHERE id = $2`,
+      `UPDATE billings SET amount = $1 WHERE id = $2 AND payment_method = 'TO_RECEIVE'`,
       [totalBilling, id],
     );
 
