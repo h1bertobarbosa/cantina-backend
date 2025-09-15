@@ -97,22 +97,34 @@ export class BillingsService {
   }
 
   async receiptDetails({ id, accountId }: InputGetById) {
-    const [billing] = await this.postgresService.query<ClientTable>(
-      `SELECT b.*,c.name,c.email,c.phone FROM billings b
+    const [[billing], items] = await Promise.all([
+      this.postgresService.query<ClientTable>(
+        `SELECT b.*,c.name,c.email,c.phone FROM billings b
       JOIN clients c ON c.id = b.client_id
       WHERE b.id = $1 AND b.account_id = $2`,
-      [id, accountId],
-    );
-    if (!billing) {
-      throw new NotFoundException('Billing not found');
-    }
-
-    const items = await this.postgresService.query<BillingItemsTable>(
-      `SELECT bi.id, t.description, t.amount, bi.purchased_at
+        [id, accountId],
+      ),
+      this.postgresService.query<BillingItemsTable>(
+        `SELECT bi.id, t.description, t.amount, bi.purchased_at
      FROM billing_items bi
      JOIN transactions t ON t.id = bi.transaction_id
      WHERE bi.billing_id = $1`,
-      [id],
+        [id],
+      ),
+    ]);
+
+    if (!billing) {
+      throw new NotFoundException('Billing not found');
+    }
+    const totalBilling = items
+      .filter(
+        (item) => !String(item.description).toLowerCase().includes('crédito'),
+      )
+      .reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
+
+    await this.postgresService.query(
+      `UPDATE billings SET amount = $1 WHERE id = $2`,
+      [totalBilling, id],
     );
 
     return {
