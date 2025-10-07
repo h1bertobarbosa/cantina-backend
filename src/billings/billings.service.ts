@@ -108,7 +108,8 @@ export class BillingsService {
         `SELECT bi.id, t.description, t.amount, bi.purchased_at
      FROM billing_items bi
      JOIN transactions t ON t.id = bi.transaction_id
-     WHERE bi.billing_id = $1`,
+     WHERE bi.billing_id = $1
+     ORDER BY bi.created_at DESC`,
         [id],
       ),
     ]);
@@ -148,7 +149,8 @@ export class BillingsService {
       `SELECT bi.id,bi.type,bi.created_at,t.amount,t.client_name,t.description,t.payment_method,bi.purchased_at 
        FROM billing_items bi
        JOIN transactions t ON t.id = bi.transaction_id
-       WHERE bi.billing_id = $1 AND t.account_id = $2`,
+       WHERE bi.billing_id = $1 AND t.account_id = $2
+       ORDER BY bi.created_at DESC`,
       [id, accountId],
     );
     return items.map((item) => OutputBillingItemDto.fromTable(item));
@@ -185,20 +187,22 @@ export class BillingsService {
       [id],
     );
     const transactionIds = transactions.map((transaction) => transaction.id);
+
+    this.logger.log(`Deleting transactions ${transactionIds.join(', ')}`);
     await this.postgresService.query(
       'DELETE FROM transactions WHERE id = ANY($1)',
       [transactionIds],
     );
-    this.logger.log(`Deleting transactions ${transactionIds.join(', ')}`);
+    this.logger.log(`Deleting billing items for billing ${id}`);
     await this.postgresService.query(
       'DELETE FROM billing_items WHERE billing_id = $1',
       [id],
     );
-    this.logger.log(`Deleting billing items for billing ${id}`);
+    this.logger.log(`Deleting billing ${id}`);
     await this.postgresService.query('DELETE FROM billings WHERE id = $1', [
       id,
     ]);
-    this.logger.log(`Deleting billing ${id}`);
+
     await this.postgresService.query(
       'INSERT INTO logs (id, account_id, user_id, data, log_type, obs) VALUES ($1, $2, $3, $4, $5, $6)',
       [
