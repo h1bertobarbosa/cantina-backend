@@ -11,10 +11,19 @@ export class QuerySaleDto {
   clientId?: string;
   @ApiPropertyOptional()
   @IsOptional()
+  paymentMethod?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
   amount?: number;
   @ApiPropertyOptional()
   @IsOptional()
   createdAt?: Date;
+  @ApiPropertyOptional()
+  @IsOptional()
+  createdAtFrom?: Date;
+  @ApiPropertyOptional()
+  @IsOptional()
+  createdAtTo?: Date;
   @ApiPropertyOptional()
   @IsOptional()
   payedAt?: Date;

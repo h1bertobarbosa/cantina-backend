@@ -21,6 +21,21 @@ export interface InputGetById {
   id: string;
   accountId: string;
 }
+
+const ORDER_BY_MAP = {
+  name: 'name',
+  price: 'price',
+  created_at: 'created_at',
+} as const;
+
+function resolveOrderBy(orderBy?: string) {
+  if (orderBy && orderBy in ORDER_BY_MAP) {
+    return ORDER_BY_MAP[orderBy as keyof typeof ORDER_BY_MAP];
+  }
+
+  return ORDER_BY_MAP.name;
+}
+
 @Injectable()
 export class ProductsService {
   constructor(
@@ -41,19 +56,30 @@ export class ProductsService {
   }
 
   async findAll(input: QueryProductDto) {
+    const orderBy = resolveOrderBy(input.orderBy);
+    const orderDir = input.orderDir === 'desc' ? 'DESC' : 'ASC';
+    const params: Array<string | number> = [input.accountId];
+    const filters: string[] = ['account_id = $1'];
+
+    if (input.search?.trim()) {
+      params.push(`%${input.search.trim()}%`);
+      const searchParamIndex = params.length;
+      filters.push(`name ILIKE $${searchParamIndex}`);
+    }
+
+    const whereClause = filters.join(' AND ');
+    params.push(input.perPage, (input.page - 1) * input.perPage);
+    const limitParamIndex = params.length - 1;
+    const offsetParamIndex = params.length;
+
     const [products, row] = await Promise.all([
       this.postgresService.query<ProductTable>(
-        'SELECT * FROM products WHERE account_id = $1 ORDER BY $2 LIMIT $3 OFFSET $4',
-        [
-          input.accountId,
-          `${input.orderBy} ${input.orderDir.toUpperCase()}`,
-          input.perPage,
-          (input.page - 1) * input.perPage,
-        ],
+        `SELECT * FROM products WHERE ${whereClause} ORDER BY ${orderBy} ${orderDir} LIMIT $${limitParamIndex} OFFSET $${offsetParamIndex}`,
+        params,
       ),
       this.postgresService.query<ProductTable>(
-        'SELECT COUNT(*) FROM products WHERE account_id = $1',
-        [input.accountId],
+        `SELECT COUNT(*) FROM products WHERE ${whereClause}`,
+        params.slice(0, limitParamIndex - 1),
       ),
     ]);
 

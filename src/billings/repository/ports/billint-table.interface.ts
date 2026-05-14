@@ -24,4 +24,5 @@ export interface BillingItemsTable extends TransactionsTable {
   type: string;
   created_at: Date;
   updated_at: Date;
+  sale_created_at?: Date;
 }

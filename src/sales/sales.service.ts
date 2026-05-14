@@ -17,28 +17,78 @@ export interface InputGetById {
   id: string;
   accountId: string;
 }
+
+const ORDER_BY_MAP = {
+  created_at: 'created_at',
+  client_name: 'client_name',
+  amount: 'amount',
+} as const;
+
+function resolveOrderBy(orderBy?: string) {
+  if (orderBy && orderBy in ORDER_BY_MAP) {
+    return ORDER_BY_MAP[orderBy as keyof typeof ORDER_BY_MAP];
+  }
+
+  return ORDER_BY_MAP.created_at;
+}
+
+function normalizeDateBoundary(value: Date | string, endOfDay = false) {
+  if (value instanceof Date) {
+    return value;
+  }
+
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split('-').map(Number);
+
+    return endOfDay
+      ? new Date(year, month - 1, day, 23, 59, 59, 999)
+      : new Date(year, month - 1, day, 0, 0, 0, 0);
+  }
+
+  return new Date(value);
+}
+
 @Injectable()
 export class SalesService {
   constructor(private readonly postgresService: PostgresService) {}
 
   async findAll({
     accountId,
+    search,
     clientId,
     createdAt,
+    createdAtFrom,
+    createdAtTo,
     orderBy,
     orderDir,
     perPage,
     page,
+    paymentMethod,
     payedAt,
   }: QuerySaleDto) {
+    const safeOrderBy = resolveOrderBy(orderBy);
+    const safeOrderDir = orderDir === 'asc' ? 'ASC' : 'DESC';
     const queryParams: (string | number | Date)[] = [accountId];
     const queryParts: string[] = [
       `transactions WHERE account_id = $${queryParams.length}`,
     ];
 
-    if (createdAt) {
+    if (search?.trim()) {
+      queryParams.push(`%${search.trim()}%`);
+      const searchParamIndex = queryParams.length;
+      queryParts.push(
+        `AND (client_name ILIKE $${searchParamIndex} OR description ILIKE $${searchParamIndex})`,
+      );
+    }
+    if (createdAtFrom || createdAt) {
       queryParts.push(`AND created_at >= $${queryParams.length + 1}`);
-      queryParams.push(createdAt);
+      queryParams.push(
+        normalizeDateBoundary((createdAtFrom || createdAt) as Date | string),
+      );
+    }
+    if (createdAtTo) {
+      queryParts.push(`AND created_at <= $${queryParams.length + 1}`);
+      queryParams.push(normalizeDateBoundary(createdAtTo as Date | string, true));
     }
     if (payedAt) {
       queryParts.push(`AND payed_at >= $${queryParams.length + 1}`);
@@ -48,10 +98,13 @@ export class SalesService {
       queryParts.push(`AND client_id = $${queryParams.length + 1}`);
       queryParams.push(clientId);
     }
+    if (paymentMethod) {
+      queryParts.push(`AND payment_method = $${queryParams.length + 1}`);
+      queryParams.push(paymentMethod);
+    }
     const finalQueryCount = queryParts.join(' ');
     const queryParamsCount = [...queryParams];
-    queryParts.push(`ORDER BY $${queryParams.length + 1}`);
-    queryParams.push(`${orderBy} ${orderDir.toUpperCase()}`);
+    queryParts.push(`ORDER BY ${safeOrderBy} ${safeOrderDir}`);
     queryParts.push(`LIMIT $${queryParams.length + 1}`);
     queryParams.push(perPage);
     queryParts.push(`OFFSET $${queryParams.length + 1}`);

@@ -5,7 +5,13 @@ import { IsOptional } from 'class-validator';
 export class QueryBillingDto {
   @ApiPropertyOptional()
   @IsOptional()
+  search?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
   clientId?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  status?: 'pending' | 'paid';
   @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)

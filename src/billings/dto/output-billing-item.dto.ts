@@ -8,6 +8,7 @@ export default class OutputBillingItemDto {
     readonly type: string,
     readonly amount: number,
     readonly paymentMethod: string,
+    readonly saleDate?: Date,
     readonly createdAt?: Date,
   ) {}
 
@@ -19,7 +20,8 @@ export default class OutputBillingItemDto {
       billing.type,
       Number(billing.amount),
       billing.payment_method,
-      billing.created_at,
+      billing.sale_created_at || billing.created_at,
+      billing.sale_created_at || billing.created_at,
     );
   }
 }

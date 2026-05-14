@@ -22,6 +22,21 @@ export interface InputGetById {
   id: string;
   accountId: string;
 }
+
+const ORDER_BY_MAP = {
+  name: 'name',
+  email: 'email',
+  created_at: 'created_at',
+} as const;
+
+function resolveOrderBy(orderBy?: string) {
+  if (orderBy && orderBy in ORDER_BY_MAP) {
+    return ORDER_BY_MAP[orderBy as keyof typeof ORDER_BY_MAP];
+  }
+
+  return ORDER_BY_MAP.name;
+}
+
 @Injectable()
 export class ClientsService {
   constructor(
@@ -42,19 +57,32 @@ export class ClientsService {
     return new OutputClientDto(newClient);
   }
   async findAll(input: QueryClientDto) {
+    const orderBy = resolveOrderBy(input.orderBy);
+    const orderDir = input.orderDir === 'desc' ? 'DESC' : 'ASC';
+    const params: Array<string | number> = [input.accountId];
+    const filters: string[] = ['account_id = $1'];
+
+    if (input.search?.trim()) {
+      params.push(`%${input.search.trim()}%`);
+      const searchParamIndex = params.length;
+      filters.push(
+        `(name ILIKE $${searchParamIndex} OR email ILIKE $${searchParamIndex} OR phone ILIKE $${searchParamIndex})`,
+      );
+    }
+
+    const whereClause = filters.join(' AND ');
+    params.push(input.perPage, (input.page - 1) * input.perPage);
+    const limitParamIndex = params.length - 1;
+    const offsetParamIndex = params.length;
+
     const [clients, row] = await Promise.all([
       this.postgresService.query<ClientTable>(
-        'SELECT * FROM clients WHERE account_id = $1 ORDER BY $2 LIMIT $3 OFFSET $4',
-        [
-          input.accountId,
-          `${input.orderBy} ${input.orderDir.toUpperCase()}`,
-          input.perPage,
-          (input.page - 1) * input.perPage,
-        ],
+        `SELECT * FROM clients WHERE ${whereClause} ORDER BY ${orderBy} ${orderDir} LIMIT $${limitParamIndex} OFFSET $${offsetParamIndex}`,
+        params,
       ),
       this.postgresService.query<ClientTable>(
-        'SELECT COUNT(*) FROM clients WHERE account_id = $1',
-        [input.accountId],
+        `SELECT COUNT(*) FROM clients WHERE ${whereClause}`,
+        params.slice(0, limitParamIndex - 1),
       ),
     ]);
 

@@ -19,6 +19,21 @@ export interface InputGetById {
   id: string;
   accountId: string;
 }
+
+const ORDER_BY_MAP = {
+  name: 'name',
+  email: 'email',
+  created_at: 'created_at',
+} as const;
+
+function resolveOrderBy(orderBy?: string) {
+  if (orderBy && orderBy in ORDER_BY_MAP) {
+    return ORDER_BY_MAP[orderBy as keyof typeof ORDER_BY_MAP];
+  }
+
+  return ORDER_BY_MAP.name;
+}
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -43,19 +58,35 @@ export class UsersService {
   }
 
   async findAll(queryUserDto: QueryUserDto) {
+    const orderBy = resolveOrderBy(queryUserDto.orderBy);
+    const orderDir = queryUserDto.orderDir === 'desc' ? 'DESC' : 'ASC';
+    const params: Array<string | number> = [queryUserDto.accountId];
+    const filters: string[] = ['account_id = $1'];
+
+    if (queryUserDto.search?.trim()) {
+      params.push(`%${queryUserDto.search.trim()}%`);
+      const searchParamIndex = params.length;
+      filters.push(
+        `(name ILIKE $${searchParamIndex} OR email ILIKE $${searchParamIndex})`,
+      );
+    }
+
+    const whereClause = filters.join(' AND ');
+    params.push(
+      queryUserDto.perPage,
+      (queryUserDto.page - 1) * queryUserDto.perPage,
+    );
+    const limitParamIndex = params.length - 1;
+    const offsetParamIndex = params.length;
+
     const [users, row] = await Promise.all([
       this.postgresService.query<UsersTable>(
-        'SELECT * FROM users WHERE account_id = $1 ORDER BY $2 LIMIT $3 OFFSET $4',
-        [
-          queryUserDto.accountId,
-          `${queryUserDto.orderBy} ${queryUserDto.orderDir.toUpperCase()}`,
-          queryUserDto.perPage,
-          (queryUserDto.page - 1) * queryUserDto.perPage,
-        ],
+        `SELECT * FROM users WHERE ${whereClause} ORDER BY ${orderBy} ${orderDir} LIMIT $${limitParamIndex} OFFSET $${offsetParamIndex}`,
+        params,
       ),
       this.postgresService.query<UsersTable>(
-        'SELECT COUNT(*) FROM users WHERE account_id = $1',
-        [queryUserDto.accountId],
+        `SELECT COUNT(*) FROM users WHERE ${whereClause}`,
+        params.slice(0, limitParamIndex - 1),
       ),
     ]);
 
