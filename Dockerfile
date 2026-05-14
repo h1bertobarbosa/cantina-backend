@@ -1,5 +1,5 @@
 # Etapa 1: Construção da aplicação
-FROM node:20-slim AS builder
+FROM node:22-slim AS builder
 
 # Define o diretório de trabalho dentro do container
 WORKDIR /app
@@ -19,7 +19,7 @@ RUN npm run build
 # Instala apenas as dependências de produção
 RUN npm install --omit=dev
 # Etapa 2: Container final
-FROM node:20-slim AS production
+FROM node:22-slim AS production
 
 # Define o diretório de trabalho dentro do container
 WORKDIR /app
