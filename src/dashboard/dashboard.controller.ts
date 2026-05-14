@@ -19,4 +19,15 @@ export class DashboardController {
       accountId: user.accountId,
     });
   }
+
+  @Get('summary')
+  async getSummary(
+    @User() user: UserSession,
+    @Query() query: QueryTotalSaleDto,
+  ) {
+    return this.dashboardService.getSummary({
+      ...query,
+      accountId: user.accountId,
+    });
+  }
 }

@@ -1,4 +1,9 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import {
@@ -19,6 +24,17 @@ export interface InputGetById {
   id: string;
   accountId: string;
 }
+export interface InputRemoveUser extends InputGetById {
+  currentUserId: string;
+}
+
+const USERS_ORDER_BY_COLUMNS: Record<string, string> = {
+  name: 'name',
+  email: 'email',
+  created_at: 'created_at',
+  updated_at: 'updated_at',
+};
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -43,19 +59,37 @@ export class UsersService {
   }
 
   async findAll(queryUserDto: QueryUserDto) {
+    const params: (string | number)[] = [queryUserDto.accountId];
+    const whereParts = ['account_id = $1'];
+
+    if (queryUserDto.search) {
+      whereParts.push(
+        `(name ILIKE $${params.length + 1} OR email ILIKE $${params.length + 1})`,
+      );
+      params.push(`%${queryUserDto.search}%`);
+    }
+
+    const safeOrderBy =
+      USERS_ORDER_BY_COLUMNS[queryUserDto.orderBy || 'name'] ||
+      USERS_ORDER_BY_COLUMNS.name;
+    const safeOrderDir =
+      queryUserDto.orderDir?.toLowerCase() === 'desc' ? 'DESC' : 'ASC';
+    const limitIndex = params.length + 1;
+    const offsetIndex = params.length + 2;
+    const whereClause = whereParts.join(' AND ');
+
     const [users, row] = await Promise.all([
       this.postgresService.query<UsersTable>(
-        'SELECT * FROM users WHERE account_id = $1 ORDER BY $2 LIMIT $3 OFFSET $4',
+        `SELECT * FROM users WHERE ${whereClause} ORDER BY ${safeOrderBy} ${safeOrderDir} LIMIT $${limitIndex} OFFSET $${offsetIndex}`,
         [
-          queryUserDto.accountId,
-          `${queryUserDto.orderBy} ${queryUserDto.orderDir.toUpperCase()}`,
+          ...params,
           queryUserDto.perPage,
           (queryUserDto.page - 1) * queryUserDto.perPage,
         ],
       ),
       this.postgresService.query<UsersTable>(
-        'SELECT COUNT(*) FROM users WHERE account_id = $1',
-        [queryUserDto.accountId],
+        `SELECT COUNT(*) FROM users WHERE ${whereClause}`,
+        params,
       ),
     ]);
 
@@ -97,7 +131,11 @@ export class UsersService {
     return OutputUserDto.fromTable(user);
   }
 
-  async remove({ id, accountId }: InputGetById) {
+  async remove({ id, accountId, currentUserId }: InputRemoveUser) {
+    if (id === currentUserId) {
+      throw new BadRequestException('You cannot delete your own user');
+    }
+
     await this.postgresService.query<UsersTable>(
       `DELETE FROM users WHERE id = $1 AND account_id = $2`,
       [id, accountId],

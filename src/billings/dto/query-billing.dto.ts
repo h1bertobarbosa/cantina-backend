@@ -6,6 +6,9 @@ import { TransactionPaymentMethodEnum } from '../../transactions/value-objects/t
 export class QueryBillingDto {
   @ApiPropertyOptional()
   @IsOptional()
+  search?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
   clientId?: string;
   @ApiPropertyOptional()
   @IsOptional()
@@ -24,6 +27,9 @@ export class QueryBillingDto {
   @ApiPropertyOptional({ enum: TransactionPaymentMethodEnum })
   @IsOptional()
   paymentMethod?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  status?: 'open' | 'partial' | 'paid';
   accountId: string;
   constructor(partial: Partial<QueryBillingDto>) {
     Object.assign(this, partial);
@@ -32,5 +38,6 @@ export class QueryBillingDto {
     this.orderDir = this.orderDir || 'desc';
     this.orderBy = this.orderBy || 'created_at';
     this.paymentMethod = this.paymentMethod || '';
+    this.status = this.status || undefined;
   }
 }

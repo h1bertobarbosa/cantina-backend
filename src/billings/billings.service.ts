@@ -20,6 +20,16 @@ import {
 import { LOGGER } from '../logger/logger.const';
 import { ClientTable } from '../clients/clients.service';
 
+const BILLINGS_ORDER_BY_COLUMNS: Record<string, string> = {
+  client_name: 'clients.name',
+  description: 'billings.description',
+  amount: 'billings.amount',
+  amount_payed: 'billings.amount_payed',
+  payment_method: 'billings.payment_method',
+  payed_at: 'billings.payed_at',
+  created_at: 'billings.created_at',
+};
+
 export interface InputGetById {
   id: string;
   accountId: string;
@@ -37,8 +47,12 @@ export class BillingsService {
   ) {}
   async findAll({
     accountId,
+    search,
     clientId,
     paymentMethod,
+    status,
+    orderBy,
+    orderDir,
     perPage,
     page,
   }: QueryBillingDto) {
@@ -47,8 +61,14 @@ export class BillingsService {
       `billings JOIN clients ON clients.id = billings.client_id WHERE billings.account_id = $${queryParams.length}`,
     ];
 
+    if (search) {
+      queryParts.push(
+        `AND (clients.name ILIKE $${queryParams.length + 1} OR billings.description ILIKE $${queryParams.length + 1})`,
+      );
+      queryParams.push(`%${search}%`);
+    }
     if (clientId) {
-      queryParts.push(`AND client_id = $${queryParams.length + 1}`);
+      queryParts.push(`AND billings.client_id = $${queryParams.length + 1}`);
       queryParams.push(clientId);
     }
     if (paymentMethod) {
@@ -57,9 +77,26 @@ export class BillingsService {
       );
       queryParams.push(paymentMethod);
     }
+    if (status === 'open') {
+      queryParts.push(
+        `AND billings.payed_at IS NULL AND COALESCE(billings.amount_payed, 0) = 0`,
+      );
+    }
+    if (status === 'partial') {
+      queryParts.push(
+        `AND billings.payed_at IS NULL AND COALESCE(billings.amount_payed, 0) > 0`,
+      );
+    }
+    if (status === 'paid') {
+      queryParts.push(`AND billings.payed_at IS NOT NULL`);
+    }
     const finalQueryCount = queryParts.join(' ');
     const queryParamsCount = [...queryParams];
-    queryParts.push(`ORDER BY clients.name ASC`);
+    const safeOrderBy =
+      BILLINGS_ORDER_BY_COLUMNS[orderBy || 'created_at'] ||
+      BILLINGS_ORDER_BY_COLUMNS.created_at;
+    const safeOrderDir = orderDir?.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+    queryParts.push(`ORDER BY ${safeOrderBy} ${safeOrderDir}`);
     queryParts.push(`LIMIT ${perPage}`);
     queryParts.push(`OFFSET ${(page - 1) * perPage}`);
     const finalQuery = queryParts.join(' ');
@@ -156,7 +193,22 @@ export class BillingsService {
     return items.map((item) => OutputBillingItemDto.fromTable(item));
   }
 
-  async updatePurchaseDate(id: string, date: string) {
+  async updatePurchaseDate(id: string, date: string, accountId: string) {
+    const [item] = await this.postgresService.query<{
+      id: string;
+      account_id: string;
+    }>(
+      `SELECT bi.id, t.account_id
+       FROM billing_items bi
+       JOIN transactions t ON t.id = bi.transaction_id
+       WHERE bi.id = $1`,
+      [id],
+    );
+
+    if (!item || item.account_id !== accountId) {
+      throw new NotFoundException('Billing item not found');
+    }
+
     const purchasedAt = new Date(`${date.split('T')[0]}T15:00:00Z`);
     await this.postgresService.query(
       `UPDATE billing_items SET purchased_at = $1 WHERE id = $2`,

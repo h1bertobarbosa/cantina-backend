@@ -23,6 +23,14 @@ export interface InputGetById {
   id: string;
   accountId: string;
 }
+
+const CHARGE_HISTORY_ORDER_BY_COLUMNS: Record<string, string> = {
+  client_name: 'c.name',
+  description: 'bh.description',
+  amount: 'bh.amount',
+  created_at: 'bh.ocurrency_date',
+};
+
 @Injectable()
 export class ClientsService {
   constructor(
@@ -146,8 +154,22 @@ export class ClientsService {
       const params: (string | number)[] = [input.accountId];
 
       if (input.clientId) {
-        whereParts.push('bh.client_id = $2');
+        whereParts.push(`bh.client_id = $${params.length + 1}`);
         params.push(input.clientId);
+      }
+      if (input.search) {
+        whereParts.push(`bh.description ILIKE $${params.length + 1}`);
+        params.push(`%${input.search}%`);
+      }
+      if (input.startDate) {
+        whereParts.push(`bh.ocurrency_date >= $${params.length + 1}`);
+        params.push(input.startDate);
+      }
+      if (input.endDate) {
+        whereParts.push(
+          `bh.ocurrency_date < ($${params.length + 1}::date + INTERVAL '1 day')`,
+        );
+        params.push(input.endDate);
       }
 
       // Calculate parameter indexes for pagination
@@ -155,7 +177,12 @@ export class ClientsService {
       const offsetIdx = params.length + 2;
 
       const whereClause = whereParts.join(' AND ');
-      const orderClause = `${input.sortBy || 'bh.ocurrency_date'} ${input.orderDir?.toUpperCase() || 'DESC'}`;
+      const safeOrderBy =
+        CHARGE_HISTORY_ORDER_BY_COLUMNS[input.sortBy || 'created_at'] ||
+        CHARGE_HISTORY_ORDER_BY_COLUMNS.created_at;
+      const safeOrderDir =
+        input.orderDir?.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+      const orderClause = `${safeOrderBy} ${safeOrderDir}`;
 
       const query = `
     SELECT bh.id, bh.description, bh.amount, bh.ocurrency_date AS created_at, c.id AS client_id, c.name AS client_name

@@ -5,7 +5,16 @@ import { IsOptional } from 'class-validator';
 export class QueryHistoryChargeDto {
   @ApiPropertyOptional()
   @IsOptional()
+  search?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
   clientId?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  startDate?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  endDate?: string;
   @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)
@@ -26,6 +35,6 @@ export class QueryHistoryChargeDto {
     this.perPage = this.perPage || 10;
     this.page = this.page || 1;
     this.orderDir = this.orderDir || 'asc';
-    this.sortBy = `bh.${this.sortBy}` || 'bh.created_at';
+    this.sortBy = this.sortBy || 'created_at';
   }
 }

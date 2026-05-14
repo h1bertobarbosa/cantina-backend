@@ -74,10 +74,12 @@ export class BillingsController {
   async updatePurchaseDate(
     @Param('id') id: string,
     @Body() updateBillingDto: UpdatePurchaseDateDto,
+    @User() user: UserSession,
   ) {
     return this.billingsService.updatePurchaseDate(
       id,
       updateBillingDto.purchaseDate,
+      user.accountId,
     );
   }
 

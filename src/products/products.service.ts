@@ -8,6 +8,14 @@ import {
   GUID_PROVIDER,
   GuidProvider,
 } from 'src/libs/src/guid/contract/guid-provider.interface';
+
+const PRODUCT_ORDER_BY_COLUMNS: Record<string, string> = {
+  name: 'name',
+  price: 'price',
+  created_at: 'created_at',
+  updated_at: 'updated_at',
+};
+
 export interface ProductTable {
   id: string;
   account_id: string;
@@ -41,20 +49,37 @@ export class ProductsService {
   }
 
   async findAll(input: QueryProductDto) {
+    const whereParts = ['account_id = $1'];
+    const params: (string | number)[] = [input.accountId];
+
+    if (input.search) {
+      whereParts.push(`name ILIKE $${params.length + 1}`);
+      params.push(`%${input.search}%`);
+    }
+
+    const safeOrderBy =
+      PRODUCT_ORDER_BY_COLUMNS[input.orderBy || 'name'] ||
+      PRODUCT_ORDER_BY_COLUMNS.name;
+    const safeOrderDir = input.orderDir?.toLowerCase() === 'desc' ? 'DESC' : 'ASC';
+    const limitIdx = params.length + 1;
+    const offsetIdx = params.length + 2;
+    const whereClause = whereParts.join(' AND ');
+    const listQuery = `
+      SELECT *
+      FROM products
+      WHERE ${whereClause}
+      ORDER BY ${safeOrderBy} ${safeOrderDir}
+      LIMIT $${limitIdx}
+      OFFSET $${offsetIdx}
+    `;
+
+    params.push(input.perPage, (input.page - 1) * input.perPage);
+    const countParams = params.slice(0, params.length - 2);
+    const countQuery = `SELECT COUNT(*) FROM products WHERE ${whereClause}`;
+
     const [products, row] = await Promise.all([
-      this.postgresService.query<ProductTable>(
-        'SELECT * FROM products WHERE account_id = $1 ORDER BY $2 LIMIT $3 OFFSET $4',
-        [
-          input.accountId,
-          `${input.orderBy} ${input.orderDir.toUpperCase()}`,
-          input.perPage,
-          (input.page - 1) * input.perPage,
-        ],
-      ),
-      this.postgresService.query<ProductTable>(
-        'SELECT COUNT(*) FROM products WHERE account_id = $1',
-        [input.accountId],
-      ),
+      this.postgresService.query<ProductTable>(listQuery, params),
+      this.postgresService.query<ProductTable>(countQuery, countParams),
     ]);
 
     return {

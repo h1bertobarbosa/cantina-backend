@@ -81,6 +81,7 @@ export class UsersController {
     await this.usersService.remove({
       id,
       accountId: user.accountId,
+      currentUserId: user.sub,
     });
   }
 }

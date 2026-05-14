@@ -17,6 +17,9 @@ export class QuerySaleDto {
   createdAt?: Date;
   @ApiPropertyOptional()
   @IsOptional()
+  purchasedAt?: Date;
+  @ApiPropertyOptional()
+  @IsOptional()
   payedAt?: Date;
   @ApiPropertyOptional()
   @IsOptional()
