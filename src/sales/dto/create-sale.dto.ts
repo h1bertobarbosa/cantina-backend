@@ -1,5 +1,11 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsDateString,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 export class CreateSaleDto {
   @ApiProperty()
   @IsString()
@@ -19,6 +25,10 @@ export class CreateSaleDto {
   @IsString()
   @IsNotEmpty()
   paymentMethod: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  saleDate?: string;
 
   @IsOptional()
   accountId: string;

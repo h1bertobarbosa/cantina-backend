@@ -1,7 +1,6 @@
 version: '3.9'
 
 services:
-
   db:
     image: postgres:16-alpine
     restart: always
@@ -16,22 +15,22 @@ services:
     networks:
       - local-network
 
-  nodejs:
-    build:
-      context: .
-      dockerfile: Dockerfile2.local
-    command: npm run start:debug
-    image: nodejs
-    container_name: nodejs
-    restart: unless-stopped
-    env_file: .env
-    ports:
-      - 3000:3000
-      - 9229:9229
-    volumes:
-      - .:/code
-    networks:
-      - local-network
+  # nodejs:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile2.local
+  #   command: npm run start:debug
+  #   image: nodejs
+  #   container_name: nodejs
+  #   restart: unless-stopped
+  #   env_file: .env
+  #   ports:
+  #     - 3000:3000
+  #     - 9229:9229
+  #   volumes:
+  #     - .:/code
+  #   networks:
+  #     - local-network
 
 volumes:
   pgdata:

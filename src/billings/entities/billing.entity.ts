@@ -36,6 +36,7 @@ export default class Billing {
   pay(amountPayed: number, paymentMethod: string) {
     this.amountPayed = amountPayed;
     const amountDifference = this.amount - this.amountPayed;
+    const currentDate = new Date();
     if (amountDifference > 0) {
       this.setTransaction(
         Transaction.fromData({
@@ -46,13 +47,15 @@ export default class Billing {
           paymentMethod: TransactionPaymentMethodEnum[paymentMethod],
           amount: amountPayed,
           quantity: 1,
-          payedAt: new Date(),
+          payedAt: currentDate,
+          createdAt: currentDate,
+          updatedAt: currentDate,
         }),
       );
       return;
     }
     if (amountDifference <= 0) {
-      this.payedAt = new Date();
+      this.payedAt = currentDate;
       this.setTransaction(
         Transaction.fromData({
           accountId: this.accountId,
@@ -63,6 +66,8 @@ export default class Billing {
           amount: amountPayed,
           quantity: 1,
           payedAt: this.payedAt,
+          createdAt: currentDate,
+          updatedAt: currentDate,
         }),
       );
     }

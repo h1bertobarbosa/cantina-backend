@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
@@ -8,6 +9,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Put,
 } from '@nestjs/common';
 import { SalesService } from './sales.service';
 import { CreateSaleDto } from './dto/create-sale.dto';
@@ -15,6 +17,7 @@ import { User, UserSession } from 'src/signin/decorators/user.decorator';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { NewSaleService } from './new-sale.service';
 import { QuerySaleDto } from './dto/query-sale.dto';
+import { UpdateSaleDto } from './dto/update-sale.dto';
 
 @ApiTags('sales')
 @ApiBearerAuth()
@@ -45,6 +48,23 @@ export class SalesController {
   @Get(':id')
   async findOne(@User() user: UserSession, @Param('id') id: string) {
     return this.salesService.findOne({ id, accountId: user.accountId });
+  }
+
+  @Put(':id')
+  async update(
+    @User() user: UserSession,
+    @Param('id') id: string,
+    @Body() updateSaleDto: UpdateSaleDto,
+  ) {
+    if (!updateSaleDto.saleDate) {
+      throw new BadRequestException('Sale date is required');
+    }
+
+    return this.salesService.update({
+      ...updateSaleDto,
+      id,
+      accountId: user.accountId,
+    });
   }
 
   @Delete(':id')

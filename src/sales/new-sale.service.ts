@@ -36,6 +36,7 @@ export class NewSaleService {
       this.getClientName(createSaleDto.clientId, createSaleDto.accountId),
     ]);
     const quantity = Number(createSaleDto.quantity);
+    const createdAt = this.parseSaleDate(createSaleDto.saleDate);
     const aTransaction = Transaction.getInstance({
       id: '',
       account_id: createSaleDto.accountId,
@@ -46,6 +47,7 @@ export class NewSaleService {
       payment_method: createSaleDto.paymentMethod,
       amount: product.getPrice() * quantity,
       quantity: quantity,
+      created_at: createdAt,
     });
 
     const createdTransaction =
@@ -103,10 +105,13 @@ export class NewSaleService {
     }
     return new OutputSaleDto(
       createdTransaction.getId(),
+      createSaleDto.clientId,
+      createSaleDto.productId,
       createdTransaction.getClientName(),
       createdTransaction.getDescription(),
       createdTransaction.getPaymentMethod(),
       createdTransaction.getAmount(),
+      createdTransaction.getQuantity(),
       createdTransaction.getCreatedAt(),
       createdTransaction.getUpdatedAt(),
       createdTransaction.getPayedAt(),
@@ -144,5 +149,15 @@ export class NewSaleService {
       throw new NotFoundException('Client not found');
     }
     return client.name;
+  }
+
+  private parseSaleDate(saleDate?: string): Date {
+    if (!saleDate) {
+      return new Date();
+    }
+
+    const [year, month, day] = saleDate.split('-').map(Number);
+
+    return new Date(year, month - 1, day, 12, 0, 0, 0);
   }
 }

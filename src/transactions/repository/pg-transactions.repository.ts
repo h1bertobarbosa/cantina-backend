@@ -28,8 +28,9 @@ export default class PgTransactionsRepository
     @Inject(GUID_PROVIDER) private readonly guidProvider: GuidProvider,
   ) {}
   async save(transaction: Transaction): Promise<Transaction> {
+    const createdAt = transaction.getCreatedAt() || new Date();
     const [newTransaction] = await this.postgresService.query<TransactionTable>(
-      `INSERT INTO transactions (id, account_id,client_id, product_id,client_name, description, payment_method,amount,quantity,payed_at) VALUES ($1, $2, $3, $4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      `INSERT INTO transactions (id, account_id,client_id, product_id,client_name, description, payment_method,amount,quantity,created_at,payed_at) VALUES ($1, $2, $3, $4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
       [
         this.guidProvider.generate(),
         transaction.getAccountId(),
@@ -40,6 +41,7 @@ export default class PgTransactionsRepository
         transaction.getPaymentMethod(),
         transaction.getAmount(),
         transaction.getQuantity(),
+        createdAt,
         transaction.getPayedAt(),
       ],
     );
