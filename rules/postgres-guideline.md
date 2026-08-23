@@ -5,7 +5,7 @@ description: Standardization guide for PostgreSQL access via the `pg` driver in 
 
 # PostgreSQL Style Guide
 
-> **Nota de aderência ao repositório:** este projeto **não** usa `pg-promise`, DBMate, `tenant_id` ou uma pasta `src/infrastructure/repositories/`. O acesso ao banco é feito via driver `pg` puro, encapsulado em `PostgresService.query<T>(sql, params)` (`src/postgres/postgres.service.ts`), migrations com `node-pg-migrate` em `migrations/`, e multi-tenancy pela coluna `account_id`. Os exemplos abaixo foram adaptados para refletir isso — trate menções remanescentes a outras stacks como erro a corrigir se encontrar.
+> **Nota de aderência ao repositório:** este projeto **não** usa `pg-promise`, `tenant_id` ou uma pasta `src/infrastructure/repositories/`. O acesso ao banco é feito via driver `pg` puro, encapsulado em `PostgresService.query<T>(sql, params)` (`src/postgres/postgres.service.ts`), migrations com `dbmate` em `migrations/`, e multi-tenancy pela coluna `account_id`. Os exemplos abaixo foram adaptados para refletir isso — trate menções remanescentes a outras stacks como erro a corrigir se encontrar.
 
 Use this guide when creating migrations, designing tables, changing PostgreSQL access code, or reviewing database-facing code.
 
@@ -21,7 +21,7 @@ This guide defines the baseline schema and query conventions. For detailed query
 
 ## When to Use
 
-- Creating or changing `node-pg-migrate` migrations (`migrations/`).
+- Creating or changing `dbmate` migrations (`migrations/`).
 - Implementing or changing PostgreSQL access code in a NestJS service/facade/repository.
 - Designing data models that respect the `account_id` tenant boundary.
 - Reviewing SQL for performance, integrity, or schema consistency.

@@ -5,7 +5,7 @@
 - **Linguagem:** TypeScript (target ES2021, `strictNullChecks`/`noImplicitAny` desligados — ver `tsconfig.json`)
 - **Runtime:** Node.js 20+
 - **Framework principal:** NestJS 10 (Express platform), build via `@swc/core` (`nest-cli.json` builder: `swc`)
-- **Persistência:** PostgreSQL via driver `pg` puro (**sem ORM**). Migrations com `node-pg-migrate` (`migrations/`)
+- **Persistência:** PostgreSQL via driver `pg` puro (**sem ORM**). Migrations com `dbmate` (`migrations/`)
 - **Auth:** JWT (`@nestjs/jwt`) com guard global + decorator `@Public()`
 - **Testes:** Jest (unitário, `@swc/jest`) + Jest/ts-jest (e2e)
 - **Arquitetura:** Monólito modular por feature (`src/<feature>/`), inspirado em Nest's module/controller/service, com tentativas pontuais e inconsistentes de Ports & Adapters (repository interfaces) e Domain Entities ricas.
@@ -31,7 +31,7 @@ Resumo: cada feature é um `NestModule` próprio (controller + service + DTOs + 
 | `src/libs/` | Providers cross-cutting injetáveis por interface: `GUID_PROVIDER` (UUIDv7) e `HASHING_PROVIDER` (bcrypt) |
 | `src/logger/` | `LOGGER` token → `WinstonLogger` (Winston + daily-rotate-file) |
 | `src/filters/`, `src/exceptions/` | `HttpExceptionFilter` global e `ValidationException` (pouco usada — ver anti-padrões) |
-| `migrations/` | Migrations `node-pg-migrate`, nomeadas `<timestamp>_<descrição-kebab>.js` |
+| `migrations/` | Migrations `dbmate` (SQL puro), nomeadas `<timestamp de 14 dígitos>_<descrição-kebab>.sql` com blocos `-- migrate:up`/`-- migrate:down` |
 | `test/` | E2E Jest (`test/jest-e2e.json`) — hoje contém apenas o boilerplate `app.e2e-spec.ts` |
 
 ## 3. Fluxo Arquitetural
@@ -90,7 +90,7 @@ Regras observadas:
 ### Persistência
 - Único ponto de acesso ao banco: `PostgresService.query<T>(sql, params)` (`src/postgres/postgres.service.ts`), que injeta o `Pool` global via `PostgresModule.forRoot(pgConfig())` (registrado uma vez em `app.module.ts`).
 - SQL é escrito à mão com placeholders posicionais (`$1, $2, ...`) — **sempre parametrizado**, nunca concatenação de valores de usuário na string (o único ponto de interpolação aceito é a whitelist de `orderBy`/`LIMIT`/`OFFSET`, que já são valores internos/sanitizados).
-- Ao adicionar/alterar tabelas, criar migration em `migrations/` com `node-pg-migrate` seguindo o padrão `<timestamp>_<descrição-kebab>.js` e `exports.up`/`exports.down` (ver `migrations/1757776646672_add-table-billing-history.js`).
+- Ao adicionar/alterar tabelas, criar migration em `migrations/` com `dbmate` seguindo o padrão `<timestamp de 14 dígitos>_<descrição-kebab>.sql` e blocos `-- migrate:up`/`-- migrate:down` (ver `migrations/20250913151726_add-table-billing-history.sql`). Use `npm run migrate new <descrição-kebab>` para gerar o arquivo com o timestamp correto.
 
 ### Assincronismo
 - Operações independentes usam `Promise.all` (ex.: buscar produtos + contagem em paralelo — `src/users/users.service.ts:81-94`, `src/sales/new-sale.service.ts:41-45`).
@@ -104,7 +104,7 @@ Regras observadas:
 - [ ] DTOs de saída usam `static fromTable(row)` mapeando `snake_case` → `camelCase`. Referência: `src/users/dto/output-user.dto.ts`.
 - [ ] Providers substituíveis (hashing, guid, repositórios) são injetados por `Symbol` token, nunca por classe concreta. Referência: `src/libs/libs.module.ts`.
 - [ ] Toda query usa parâmetros posicionais (`$1, $2, ...`), nunca template string com valor de usuário embutido. Referência: qualquer `*.service.ts` em `src/`.
-- [ ] Migrations novas seguem `node-pg-migrate` com `up`/`down` e nome `<timestamp>_<kebab>.js`. Referência: `migrations/`.
+- [ ] Migrations novas seguem `dbmate` com `-- migrate:up`/`-- migrate:down` e nome `<timestamp de 14 dígitos>_<kebab>.sql`. Referência: `migrations/`.
 - [ ] Controllers ficam finos: parseiam request (`@Param`, `@Query`, `@Body`, `@User`) e delegam 100% da lógica ao service/facade. Referência: `src/users/users.controller.ts`.
 
 ## 6. Anti-padrões que NÃO devem ser replicados
@@ -163,7 +163,7 @@ Regras observadas:
 
 Fluxo típico (HTTP CRUD por feature), seguindo o padrão dominante (ex.: `users`, `products`, `clients`):
 
-1. **Migration:** criar `migrations/<timestamp>_create-<tabela>-table.js` com `node-pg-migrate` (`pgm.createTable`), incluindo `id uuid` PK, `account_id uuid` FK para `accounts` (`onDelete: 'restrict'`), `created_at`/`updated_at`.
+1. **Migration:** criar `migrations/<timestamp>_create-<tabela>-table.sql` com `dbmate` (`CREATE TABLE` em SQL puro), incluindo `id uuid` PK, `account_id uuid` FK para `accounts` (`ON DELETE RESTRICT`), `created_at`/`updated_at`.
 2. **Módulo:** criar `src/<feature>/<feature>.module.ts` registrando `<Feature>Controller` e `<Feature>Service`; importar `LibsModule` se precisar de `GUID_PROVIDER`/`HASHING_PROVIDER`, e `LoggerModule` se for logar. Registrar o módulo em `src/app.module.ts`.
 3. **Entities/DTOs:**
    - `src/<feature>/entities/<feature>.entity.ts` só se a lógica de negócio justificar um objeto rico (senão, um `interface <Feature>Table` no próprio service, como em `products.service.ts`/`clients.service.ts`, é aceitável — é o padrão majoritário).
@@ -215,9 +215,11 @@ npm run test:cov
 # testes e2e
 npm run test:e2e
 
-# migrations (node-pg-migrate)
+# migrations (dbmate)
 npm run migrate up
 npm run migrate down
+npm run migrate new <descrição-kebab>
+npm run migrate status
 ```
 
 Banco local via Docker: `docker compose up -d db` (ver `README.md` e `docker-compose.yml`).
@@ -246,7 +248,7 @@ Banco local via Docker: `docker compose up -d db` (ver `README.md` e `docker-com
 
 ## 12. Regras Detalhadas (carregar sob demanda)
 
-Este `AGENTS.md` cobre o essencial para qualquer alteração. Para os assuntos abaixo, existem guias mais profundos em `rules/` — **carregue apenas o arquivo relevante para a tarefa em mãos**, não todos de uma vez. Todos já foram revisados e corrigidos para refletir o stack real deste repositório (`pg` puro, `node-pg-migrate`, `account_id`, sem Clean Architecture) — cada um tem uma nota "Nota de aderência ao repositório" no topo apontando o que é real vs. aspiracional.
+Este `AGENTS.md` cobre o essencial para qualquer alteração. Para os assuntos abaixo, existem guias mais profundos em `rules/` — **carregue apenas o arquivo relevante para a tarefa em mãos**, não todos de uma vez. Todos já foram revisados e corrigidos para refletir o stack real deste repositório (`pg` puro, `dbmate`, `account_id`, sem Clean Architecture) — cada um tem uma nota "Nota de aderência ao repositório" no topo apontando o que é real vs. aspiracional.
 
 | Quando carregar | Arquivo | Cobre |
 | --- | --- | --- |

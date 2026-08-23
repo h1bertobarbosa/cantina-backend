@@ -32,6 +32,36 @@ subir o banco de dados com o comando docker
 ainda no terminal rodar os comandos para criar as tabelas
 ´npm run migrate up´
 
+As migrations usam [dbmate](https://github.com/amacneil/dbmate) e ficam em `migrations/` (arquivos `.sql` com blocos `-- migrate:up` / `-- migrate:down`). Comandos úteis:
+
+```bash
+npm run migrate up       # aplica migrations pendentes
+npm run migrate down     # reverte a última migration
+npm run migrate new <nome>  # cria uma nova migration em migrations/
+npm run migrate status   # lista o que já foi aplicado
+```
+
+### Migrando de node-pg-migrate para dbmate em um ambiente já existente
+
+Bancos que já tinham o schema criado pelo antigo `node-pg-migrate` (ex.: produção) têm as tabelas mas não a tabela de controle `schema_migrations` do dbmate. Rodar `dbmate up` direto tentaria recriar as tabelas e falharia. Faça isso uma única vez, por ambiente:
+
+1. Rode `dbmate up` — ele cria a tabela `schema_migrations` e falha ao tentar aplicar a primeira migration (esperado, pode ignorar o erro).
+2. Marque como já aplicadas todas as migrations que correspondem ao schema já existente:
+   ```sql
+   INSERT INTO schema_migrations (version) VALUES
+     ('20240810010210'),
+     ('20240810225346'),
+     ('20240810225938'),
+     ('20240810230108'),
+     ('20240905161016'),
+     ('20240905161017'),
+     ('20240905161107'),
+     ('20250321173722'),
+     ('20250511002054'),
+     ('20250913151726');
+   ```
+3. `npm run migrate status` deve mostrar tudo aplicado. A partir daí, `npm run migrate up` só roda migrations novas.
+
 <p align="center">
   <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="200" alt="Nest Logo" /></a>
 </p>

@@ -2,7 +2,7 @@
 
 Use this guide before writing or changing SQL in services, facades, migrations, reports, or operational scripts.
 
-> **Nota de aderência ao repositório:** este projeto usa PostgreSQL com o driver `pg` puro (via `PostgresService.query<T>(sql, params)` em `src/postgres/postgres.service.ts`), migrations com `node-pg-migrate` em `migrations/`, dados particionados por `account_id` (não `tenant_id`), e SQL escrito majoritariamente inline dentro de `src/<feature>/*.service.ts` — não em `src/infrastructure/repositories/` (essa pasta não existe aqui). Alguns módulos têm uma camada de repositório parcial (`src/transactions/repository/`, `src/sales/repository/`); a maioria não tem. Não há `db/schema.sql` neste repositório.
+> **Nota de aderência ao repositório:** este projeto usa PostgreSQL com o driver `pg` puro (via `PostgresService.query<T>(sql, params)` em `src/postgres/postgres.service.ts`), migrations com `dbmate` em `migrations/`, dados particionados por `account_id` (não `tenant_id`), e SQL escrito majoritariamente inline dentro de `src/<feature>/*.service.ts` — não em `src/infrastructure/repositories/` (essa pasta não existe aqui). Alguns módulos têm uma camada de repositório parcial (`src/transactions/repository/`, `src/sales/repository/`); a maioria não tem. Não há `db/schema.sql` neste repositório (dump de schema desativado via `DBMATE_NO_DUMP_SCHEMA=true`).
 
 ## Core Principles
 
@@ -224,7 +224,7 @@ Rules:
 
 For query-affecting changes:
 
-- Add `node-pg-migrate` migrations under `migrations/`, named `<timestamp>_<kebab-description>.js` with `exports.up`/`exports.down` (see `migrations/1757776646672_add-table-billing-history.js`).
+- Add `dbmate` migrations under `migrations/`, named `<14-digit timestamp>_<kebab-description>.sql` with `-- migrate:up`/`-- migrate:down` blocks (see `migrations/20250913151726_add-table-billing-history.sql`).
 - Add indexes and constraints in the same feature migration when practical.
 - There is no `db/schema.sql` snapshot in this repo — do not add one unless explicitly requested; `migrations/` is the source of truth.
 - Avoid destructive migrations unless the product explicitly requires them and rollback is clear.

@@ -1,0 +1,6 @@
+# syntax=docker/dockerfile:1.7
+FROM amacneil/dbmate:2.35.0
+
+COPY --link migrations /migrations
+
+ENV DBMATE_MIGRATIONS_DIR=/migrations
