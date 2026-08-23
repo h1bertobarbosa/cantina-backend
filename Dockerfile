@@ -19,7 +19,7 @@ RUN npm run build
 # Instala apenas as dependências de produção
 RUN npm install --omit=dev
 # Etapa 2: Container final
-FROM node:22-slim AS production
+FROM gcr.io/distroless/nodejs22-debian12 AS runner
 
 # Define o diretório de trabalho dentro do container
 WORKDIR /app
@@ -39,5 +39,5 @@ ENV NODE_ENV=production
 EXPOSE 3000
 
 # Comando para iniciar a aplicação
-CMD ["node", "dist/main"]
+CMD ["dist/main"]
 
