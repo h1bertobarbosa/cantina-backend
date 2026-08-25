@@ -256,5 +256,6 @@ Este `AGENTS.md` cobre o essencial para qualquer alteração. Para os assuntos a
 | Criando/alterando migration, tabela, índice, ou qualquer service/facade que escreve SQL | `rules/postgres-guideline.md` | Convenções de schema (tipos de coluna, PK/FK, `account_id`), quando usar transação real, quando (não) usar soft delete, exemplo de query via `PostgresService` |
 | Escrevendo ou revisando uma query específica (performance, sargability, `ORDER BY`, busca `ILIKE`, paginação, índices) | `rules/postgres-queries.md` | Regras de sargability, prefixo vs. contains search, `EXISTS`/`JOIN`, whitelist de `orderBy`, índices por padrão de query |
 | Criando ou revisando testes (`*.spec.ts`, e2e) | `rules/testing-standards.md` | Estrutura AAA, isolamento/determinismo, mocks com Jest, convenção de localização de testes, o que testar em unit vs. e2e |
+| Desenhando/revisando uma classe, service ou interface e avaliando responsabilidade, acoplamento ou se vale a pena introduzir uma abstração (repositório, strategy, etc.) | `rules/solid-principles.md` | Aplicação pragmática de SRP/OCP/LSP/ISP/DIP com exemplos do repo, e quando **não** vale a pena abstrair |
 
 Não é necessário carregar esses arquivos para alterações triviais (ex.: corrigir um typo, ajustar uma mensagem de erro) — use-os quando a tarefa envolver decisões de design em uma dessas áreas.
