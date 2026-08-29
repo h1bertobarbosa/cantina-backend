@@ -18,14 +18,14 @@ services:
       POSTGRES_DB: cantina
       POSTGRES_USER: cantina
     networks:
-      - local-network
+      - cantina_app_network
 
   db-migrations:
     image: h1bertobarbosa/cantina-backend-migrations:latest
     env_file:
       - .env.prd
     networks:
-      - local-network
+      - cantina_app_network
     depends_on:
       - db
     command: ['--wait', 'up']
@@ -49,7 +49,7 @@ services:
     ports:
       - 127.0.0.1:3000:3000
     networks:
-      - local-network
+      - cantina_app_network
     deploy:
       replicas: 3
       update_config:
@@ -75,7 +75,9 @@ services:
 
 volumes:
   pgdata:
+    external: true
+    name: cantina_pg_data
 
 networks:
-  local-network:
+  cantina_app_network:
     driver: overlay
