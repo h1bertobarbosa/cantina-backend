@@ -23,7 +23,7 @@ services:
   db-migrations:
     image: h1bertobarbosa/cantina-backend-migrations:latest
     env_file:
-      - .env
+      - .env.prd
     networks:
       - local-network
     depends_on:
@@ -43,7 +43,7 @@ services:
     image: h1bertobarbosa/cantina-backend:latest
     container_name: cantinabackend
     restart: unless-stopped
-    env_file: .env
+    env_file: .env.prd
     depends_on:
       - db
     ports:
