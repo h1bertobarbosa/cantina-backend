@@ -41,7 +41,6 @@ services:
 
   cantinabackend:
     image: h1bertobarbosa/cantina-backend:latest
-    container_name: cantinabackend
     restart: unless-stopped
     env_file: .env.prd
     depends_on:
