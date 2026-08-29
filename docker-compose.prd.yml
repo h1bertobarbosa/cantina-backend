@@ -39,9 +39,9 @@ services:
         constraints:
           - node.role == manager
 
-  nodejs:
+  cantinabackend:
     image: h1bertobarbosa/cantina-backend:latest
-    container_name: nodejs
+    container_name: cantinabackend
     restart: unless-stopped
     env_file: .env
     depends_on:
