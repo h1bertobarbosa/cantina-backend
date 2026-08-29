@@ -14,6 +14,7 @@ import { LoggerModule } from './logger/logger.module';
 import { BillingsModule } from './billings/billings.module';
 import { UsersModule } from './users/users.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { LogsModule } from './logs/logs.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     BillingsModule,
     UsersModule,
     DashboardModule,
+    LogsModule,
   ],
   controllers: [AppController],
   providers: [],
