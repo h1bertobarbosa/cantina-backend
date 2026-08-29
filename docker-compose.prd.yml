@@ -27,8 +27,7 @@ services:
     networks:
       - local-network
     depends_on:
-      db:
-        condition: service_healthy
+      - db
     command: ['--wait', 'up']
     deploy:
       replicas: 1
@@ -46,8 +45,7 @@ services:
     restart: unless-stopped
     env_file: .env
     depends_on:
-      db:
-        condition: service_healthy
+      - db
     ports:
       - 127.0.0.1:3000:3000
     networks:
@@ -80,4 +78,4 @@ volumes:
 
 networks:
   local-network:
-    driver: bridge
+    driver: overlay
