@@ -33,6 +33,9 @@ export class SalesController {
     return this.newSalesService.execute({
       ...createSaleDto,
       accountId: user.accountId,
+      userId: user.sub,
+      userName: user.name,
+      userEmail: user.email,
     });
   }
 

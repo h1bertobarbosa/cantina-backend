@@ -36,6 +36,8 @@ export interface InputGetById {
 }
 export interface DeleteBillingParams extends InputGetById {
   userId: string;
+  userName: string;
+  userEmail: string;
   obs: string;
 }
 @Injectable()
@@ -220,7 +222,14 @@ export class BillingsService {
     };
   }
 
-  async deleteBilling({ id, accountId, userId, obs }: DeleteBillingParams) {
+  async deleteBilling({
+    id,
+    accountId,
+    userId,
+    userName,
+    userEmail,
+    obs,
+  }: DeleteBillingParams) {
     const [billing] = await this.postgresService.query<BillingsTable>(
       `SELECT * FROM billings WHERE id = $1`,
       [id],
@@ -256,11 +265,13 @@ export class BillingsService {
     ]);
 
     await this.postgresService.query(
-      'INSERT INTO logs (id, account_id, user_id, data, log_type, obs) VALUES ($1, $2, $3, $4, $5, $6)',
+      'INSERT INTO logs (id, account_id, user_id, user_name, user_email, data, log_type, obs) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
       [
         this.guidProvider.generate(),
         billing.account_id,
         userId,
+        userName,
+        userEmail,
         JSON.stringify(transactions),
         'delete_billing',
         obs,

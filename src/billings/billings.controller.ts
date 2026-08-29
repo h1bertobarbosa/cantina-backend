@@ -51,7 +51,7 @@ export class BillingsController {
 
   @Patch(':id/pay')
   async payBilling(
-    @User() user,
+    @User() user: UserSession,
     @Param('id') id: string,
     @Body() updateBillingDto: PayBillingDto,
   ) {
@@ -59,6 +59,9 @@ export class BillingsController {
       ...updateBillingDto,
       accountId: user.accountId,
       billingId: id,
+      userId: user.sub,
+      userName: user.name,
+      userEmail: user.email,
     });
   }
 
@@ -93,6 +96,8 @@ export class BillingsController {
       id,
       accountId: user.accountId,
       userId: user.sub,
+      userName: user.name,
+      userEmail: user.email,
       obs: body.obs,
     });
   }

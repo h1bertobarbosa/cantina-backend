@@ -28,6 +28,19 @@ import {
 } from 'src/libs/src/guid/contract/guid-provider.interface';
 import { LOGGER } from '../logger/logger.const';
 
+interface CreateSaleInput extends CreateSaleDto {
+  accountId: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+}
+
+interface BillingLogData {
+  action: 'created' | 'updated' | 'none';
+  id?: string;
+  amount?: number;
+}
+
 @Injectable()
 export class NewSaleService {
   constructor(
@@ -37,7 +50,7 @@ export class NewSaleService {
     @Inject(GUID_PROVIDER) private readonly guidProvider: GuidProvider,
     @Inject(LOGGER) private readonly logger: LoggerService,
   ) {}
-  async execute(createSaleDto: CreateSaleDto): Promise<OutputSaleDto> {
+  async execute(createSaleDto: CreateSaleInput): Promise<OutputSaleDto> {
     const products = await Promise.all(
       createSaleDto.items.map((item) =>
         this.getProduct(item.productId, createSaleDto.accountId),
@@ -84,6 +97,8 @@ export class NewSaleService {
       )}`,
     );
 
+    let billingLogData: BillingLogData = { action: 'none' };
+
     if (createSaleDto.paymentMethod === 'TO_RECEIVE') {
       const aBilling = await this.hasClientOpenBilling(
         createSaleDto.clientId,
@@ -123,6 +138,11 @@ export class NewSaleService {
         this.logger.log(
           `Updated billing ${aBilling.id} with amount: ${newAmount}`,
         );
+        billingLogData = {
+          action: 'updated',
+          id: aBilling.id,
+          amount: newAmount,
+        };
       } else {
         let amountBilling = 0;
         createdTransactions.forEach((aTransaction) => {
@@ -158,6 +178,11 @@ export class NewSaleService {
             `Created billing item ${aTransaction.getId()} for billing ${newBilling.id}`,
           );
         }
+        billingLogData = {
+          action: 'created',
+          id: newBilling.id,
+          amount: amountBilling,
+        };
       }
     }
 
@@ -169,7 +194,7 @@ export class NewSaleService {
       0,
     );
 
-    return new OutputSaleDto(
+    const output = new OutputSaleDto(
       createdTransactions[0].getId(),
       createdTransactions[0].getClientName(),
       createdTransactions[0].getDescription(),
@@ -180,6 +205,15 @@ export class NewSaleService {
       createdTransactions[0].getPayedAt(),
       purchasedAt,
     );
+
+    await this.logCreateSale(
+      createSaleDto,
+      createdTransactions,
+      billingLogData,
+      purchasedAt,
+    );
+
+    return output;
   }
 
   private async hasClientOpenBilling(clientId: string, accountId: string) {
@@ -213,5 +247,49 @@ export class NewSaleService {
       throw new NotFoundException('Client not found');
     }
     return client.name;
+  }
+
+  private async logCreateSale(
+    createSaleDto: CreateSaleInput,
+    createdTransactions: Transaction[],
+    billingLogData: BillingLogData,
+    purchasedAt: Date,
+  ) {
+    try {
+      await this.postgresService.query(
+        'INSERT INTO logs (id, account_id, user_id, user_name, user_email, data, log_type, obs) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+        [
+          this.guidProvider.generate(),
+          createSaleDto.accountId,
+          createSaleDto.userId,
+          createSaleDto.userName,
+          createSaleDto.userEmail,
+          JSON.stringify({
+            transactions: createdTransactions.map((transaction) => ({
+              id: transaction.getId(),
+              clientId: transaction.getClientId(),
+              clientName: transaction.getClientName(),
+              productId: transaction.getProductId(),
+              description: transaction.getDescription(),
+              paymentMethod: transaction.getPaymentMethod(),
+              amount: transaction.getAmount(),
+              quantity: transaction.getQuantity(),
+              payedAt: transaction.getPayedAt(),
+              createdAt: transaction.getCreatedAt(),
+              updatedAt: transaction.getUpdatedAt(),
+            })),
+            billing: billingLogData,
+            purchasedAt,
+          }),
+          'create_sale',
+          null,
+        ],
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to insert create_sale log for user ${createSaleDto.userId}`,
+        error,
+      );
+    }
   }
 }
