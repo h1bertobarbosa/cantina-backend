@@ -24,10 +24,6 @@ services:
     image: h1bertobarbosa/cantina-backend-migrations:latest
     env_file:
       - .env
-    environment:
-      DATABASE_URL: postgres://cantina:123456@db:5432/cantina
-      DBMATE_MIGRATIONS_DIR: /migrations
-      DBMATE_NO_DUMP_SCHEMA: 'true'
     networks:
       - local-network
     depends_on:
