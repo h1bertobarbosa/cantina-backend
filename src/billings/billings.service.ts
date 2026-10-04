@@ -19,6 +19,7 @@ import {
 } from '../libs/src/guid/contract/guid-provider.interface';
 import { LOGGER } from '../logger/logger.const';
 import { ClientTable } from '../clients/clients.service';
+import { BillingItemTypeEnum } from './entities/billing-item-type.vo';
 
 const BILLINGS_ORDER_BY_COLUMNS: Record<string, string> = {
   client_name: 'clients.name',
@@ -29,6 +30,12 @@ const BILLINGS_ORDER_BY_COLUMNS: Record<string, string> = {
   payed_at: 'billings.payed_at',
   created_at: 'billings.created_at',
 };
+
+const normalizeText = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
 
 export interface InputGetById {
   id: string;
@@ -144,7 +151,7 @@ export class BillingsService {
         [id, accountId],
       ),
       this.postgresService.query<BillingItemsTable>(
-        `SELECT bi.id, t.description, t.amount, bi.purchased_at
+        `SELECT bi.id, bi.type, t.description, t.amount, bi.purchased_at
      FROM billing_items bi
      JOIN transactions t ON t.id = bi.transaction_id
      WHERE bi.billing_id = $1
@@ -157,9 +164,9 @@ export class BillingsService {
       throw new NotFoundException('Billing not found');
     }
     const totalBilling = items.reduce((sum, item) => {
-      const isCredito = String(item.description)
-        .toLowerCase()
-        .includes('crédito');
+      const isCredito =
+        item.type === BillingItemTypeEnum.CREDIT ||
+        normalizeText(String(item.description || '')).includes('credito');
       const amount = parseFloat(item.amount) || 0;
       return isCredito ? sum - amount : sum + amount;
     }, 0);
@@ -178,6 +185,7 @@ export class BillingsService {
       items: items.map((item) => ({
         id: item.id,
         description: item.description,
+        type: item.type,
         amount: item.amount,
         purchasedAt: item.purchased_at,
       })),
