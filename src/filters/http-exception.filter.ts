@@ -29,6 +29,16 @@ export class HttpExceptionFilter implements ExceptionFilter {
       path: request.url,
       method: request.method,
       message,
+      ...(typeof exceptionResponse === 'object' &&
+      exceptionResponse !== null &&
+      'activeBillingId' in exceptionResponse
+        ? { activeBillingId: exceptionResponse['activeBillingId'] }
+        : {}),
+      ...(typeof exceptionResponse === 'object' &&
+      exceptionResponse !== null &&
+      'reversalItemId' in exceptionResponse
+        ? { reversalItemId: exceptionResponse['reversalItemId'] }
+        : {}),
     };
     Logger.log(message, HttpExceptionFilter.name);
     response.status(status).json(errorResponse);
