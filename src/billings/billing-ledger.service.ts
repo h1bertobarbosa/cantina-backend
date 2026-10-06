@@ -1,4 +1,11 @@
-import { Inject, Injectable, LoggerService } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  LoggerService,
+  NotFoundException,
+} from '@nestjs/common';
 import { PoolClient } from 'pg';
 import {
   GUID_PROVIDER,
@@ -17,6 +24,26 @@ export interface LedgerTotals {
   debitTotal: number;
   creditTotal: number;
   openAmount: number;
+}
+
+export interface CreateManagedBillingInput extends ClientAccountInput {
+  description: string;
+  amount?: number;
+  purchaseDate?: string;
+}
+
+export interface AddBillingDebitInput {
+  accountId: string;
+  billingId: string;
+  amount: number;
+  description: string;
+  purchaseDate?: string;
+}
+
+interface ClientRow {
+  id: string;
+  account_id: string;
+  name: string;
 }
 
 @Injectable()
@@ -66,6 +93,88 @@ export class BillingLedgerService {
     return result.rows[0] || null;
   }
 
+  async createBilling(
+    input: CreateManagedBillingInput,
+  ): Promise<BillingsTable> {
+    return this.withTransaction(async (client) => {
+      const aClient = await this.getClient(
+        input.clientId,
+        input.accountId,
+        client,
+      );
+      const activeBilling = await this.getActiveBilling(input, client);
+
+      if (activeBilling) {
+        throw new ConflictException({
+          message: 'Client already has an active billing.',
+          activeBillingId: activeBilling.id,
+        });
+      }
+
+      const billingId = this.generateId();
+      const [billing] = await this.queryRows<BillingsTable>(
+        client,
+        `
+          INSERT INTO billings (
+            id,
+            account_id,
+            client_id,
+            payment_method,
+            description,
+            amount,
+            amount_payed,
+            status
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          RETURNING *
+        `,
+        [
+          billingId,
+          input.accountId,
+          input.clientId,
+          'TO_RECEIVE',
+          input.description,
+          0,
+          0,
+          'OPEN',
+        ],
+      );
+
+      if (input.amount && Number(input.amount) > 0) {
+        return this.addDebitToBilling(
+          billing,
+          aClient.name,
+          {
+            accountId: input.accountId,
+            billingId,
+            amount: input.amount,
+            description: input.description,
+            purchaseDate: input.purchaseDate,
+          },
+          client,
+        );
+      }
+
+      return billing;
+    });
+  }
+
+  async addDebit(input: AddBillingDebitInput): Promise<BillingsTable> {
+    return this.withTransaction(async (client) => {
+      const billing = await this.getBillingForUpdate(
+        input.billingId,
+        input.accountId,
+        client,
+      );
+      const aClient = await this.getClient(
+        billing.client_id,
+        input.accountId,
+        client,
+      );
+
+      return this.addDebitToBilling(billing, aClient.name, input, client);
+    });
+  }
+
   async calculateLedgerTotals(
     billingId: string,
     accountId: string,
@@ -107,5 +216,182 @@ export class BillingLedgerService {
 
   protected log(message: string) {
     this.logger.log(message);
+  }
+
+  private async addDebitToBilling(
+    billing: BillingsTable,
+    clientName: string,
+    input: AddBillingDebitInput,
+    client: PoolClient,
+  ): Promise<BillingsTable> {
+    this.assertBillingIsMutable(billing);
+
+    const transactionId = this.generateId();
+    await client.query(
+      `
+        INSERT INTO transactions (
+          id,
+          account_id,
+          client_id,
+          client_name,
+          description,
+          payment_method,
+          amount,
+          quantity
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `,
+      [
+        transactionId,
+        input.accountId,
+        billing.client_id,
+        clientName,
+        input.description,
+        'TO_RECEIVE',
+        input.amount,
+        1,
+      ],
+    );
+
+    await client.query(
+      `
+        INSERT INTO billing_items (
+          id,
+          billing_id,
+          transaction_id,
+          type,
+          purchased_at
+        ) VALUES ($1, $2, $3, $4, $5)
+      `,
+      [
+        this.generateId(),
+        billing.id,
+        transactionId,
+        'DEBIT',
+        this.getPurchasedAt(input.purchaseDate),
+      ],
+    );
+
+    return this.updateBillingProjection(billing.id, input.accountId, client);
+  }
+
+  private async getBillingForUpdate(
+    billingId: string,
+    accountId: string,
+    client: Pick<PoolClient, 'query'>,
+  ): Promise<BillingsTable> {
+    const [billing] = await this.queryRows<BillingsTable>(
+      client,
+      `
+        SELECT *
+        FROM billings
+        WHERE id = $1
+        FOR UPDATE
+      `,
+      [billingId],
+    );
+
+    if (!billing || billing.account_id !== accountId) {
+      throw new NotFoundException('Billing not found');
+    }
+
+    return billing;
+  }
+
+  private async getClient(
+    clientId: string,
+    accountId: string,
+    client: Pick<PoolClient, 'query'>,
+  ): Promise<ClientRow> {
+    const [aClient] = await this.queryRows<ClientRow>(
+      client,
+      `
+        SELECT id, account_id, name
+        FROM clients
+        WHERE id = $1
+      `,
+      [clientId],
+    );
+
+    if (!aClient || aClient.account_id !== accountId) {
+      throw new NotFoundException('Client not found');
+    }
+
+    return aClient;
+  }
+
+  private async updateBillingProjection(
+    billingId: string,
+    accountId: string,
+    client: PoolClient,
+  ): Promise<BillingsTable> {
+    const totals = await this.calculateLedgerTotals(billingId, accountId, client);
+    const status = this.getStatusFromTotals(totals);
+    const openAmount = Math.max(totals.openAmount, 0);
+    const payedAt = status === 'PAID' ? new Date() : null;
+    const [billing] = await this.queryRows<BillingsTable>(
+      client,
+      `
+        UPDATE billings
+        SET
+          amount = $1,
+          amount_payed = $2,
+          status = $3,
+          payed_at = $4,
+          updated_at = $5
+        WHERE id = $6
+          AND account_id = $7
+        RETURNING *
+      `,
+      [
+        openAmount,
+        totals.creditTotal,
+        status,
+        payedAt,
+        new Date(),
+        billingId,
+        accountId,
+      ],
+    );
+
+    return billing;
+  }
+
+  private getStatusFromTotals(totals: LedgerTotals) {
+    if (totals.openAmount < 0) {
+      return 'CREDIT_BALANCE';
+    }
+
+    if (totals.openAmount === 0 && totals.creditTotal > 0) {
+      return 'PAID';
+    }
+
+    if (totals.creditTotal > 0) {
+      return 'PARTIAL';
+    }
+
+    return 'OPEN';
+  }
+
+  private assertBillingIsMutable(billing: BillingsTable) {
+    if (!['OPEN', 'PARTIAL'].includes(billing.status)) {
+      throw new BadRequestException('Billing is not open or partial');
+    }
+  }
+
+  private getPurchasedAt(value?: string) {
+    if (!value) {
+      return new Date();
+    }
+
+    return new Date(`${value.split('T')[0]}T12:00:00Z`);
+  }
+
+  private async queryRows<T>(
+    client: Pick<PoolClient, 'query'>,
+    sql: string,
+    params: unknown[],
+  ): Promise<T[]> {
+    const result = await client.query<T>(sql, params);
+    return result.rows;
   }
 }
