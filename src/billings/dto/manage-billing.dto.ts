@@ -6,6 +6,9 @@ import {
   IsDateString,
   IsNotEmpty,
   IsNumber,
+  IsInt,
+  IsIn,
+  MaxLength,
   IsOptional,
   IsString,
   Min,
@@ -22,6 +25,7 @@ export class CreateManagedBillingDto {
   @ApiProperty()
   @IsString()
   @IsNotEmpty()
+  @MaxLength(150)
   description: string;
 
   @ApiPropertyOptional()
@@ -45,6 +49,7 @@ export class AddBillingDebitDto {
   @ApiProperty()
   @IsString()
   @IsNotEmpty()
+  @MaxLength(150)
   description: string;
 
   @ApiPropertyOptional()
@@ -62,11 +67,13 @@ export class AddBillingCreditDto {
   @ApiProperty({ enum: TransactionPaymentMethodEnum })
   @IsString()
   @IsNotEmpty()
+  @IsIn(['PIX', 'CREDIT_CARD', 'DEBIT_CARD', 'BOLETO', 'CASH'])
   paymentMethod: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(150)
   description?: string;
 }
 
@@ -82,7 +89,7 @@ class ManagedBillingSaleItemDto {
   price: number;
 
   @ApiProperty()
-  @IsNumber()
+  @IsInt()
   @Min(1)
   quantity: number;
 }

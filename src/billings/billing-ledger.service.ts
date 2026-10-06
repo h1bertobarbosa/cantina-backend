@@ -33,12 +33,18 @@ export interface LedgerTotals {
 }
 
 export interface CreateManagedBillingInput extends ClientAccountInput {
+  userId?: string;
+  userName?: string;
+  userEmail?: string;
   description: string;
   amount?: number;
   purchaseDate?: string;
 }
 
 export interface AddBillingDebitInput {
+  userId?: string;
+  userName?: string;
+  userEmail?: string;
   accountId: string;
   billingId: string;
   amount: number;
@@ -150,11 +156,21 @@ export class BillingLedgerService {
   async createBilling(
     input: CreateManagedBillingInput,
   ): Promise<BillingsTable> {
+    if (
+      !input.description?.trim() ||
+      (input.amount !== undefined &&
+        (input.amount < 0 || !this.isMoney(input.amount)))
+    ) {
+      throw new BadRequestException(
+        'Invalid billing description or initial amount',
+      );
+    }
     return this.withTransaction(async (client) => {
       const aClient = await this.getClient(
         input.clientId,
         input.accountId,
         client,
+        true,
       );
       const activeBilling = await this.getActiveBilling(input, client);
 
@@ -193,8 +209,9 @@ export class BillingLedgerService {
         ],
       );
 
+      let createdBilling = billing;
       if (input.amount && Number(input.amount) > 0) {
-        return this.addDebitToBilling(
+        createdBilling = await this.addDebitToBilling(
           billing,
           aClient.name,
           {
@@ -203,12 +220,23 @@ export class BillingLedgerService {
             amount: input.amount,
             description: input.description,
             purchaseDate: input.purchaseDate,
+            userId: input.userId,
+            userName: input.userName,
+            userEmail: input.userEmail,
           },
           client,
         );
       }
 
-      return billing;
+      await this.insertBillingLog(client, {
+        accountId: input.accountId,
+        userId: input.userId,
+        userName: input.userName,
+        userEmail: input.userEmail,
+        logType: 'billing_created',
+        data: { billingId, before: null, after: createdBilling },
+      });
+      return createdBilling;
     });
   }
 
@@ -230,8 +258,19 @@ export class BillingLedgerService {
   }
 
   async addCredit(input: AddBillingCreditInput): Promise<BillingsTable> {
-    if (!input.amount || Number(input.amount) <= 0) {
+    if (
+      !input.amount ||
+      Number(input.amount) <= 0 ||
+      !this.isMoney(input.amount)
+    ) {
       throw new BadRequestException('Credit amount must be greater than zero');
+    }
+    if (
+      !['PIX', 'CREDIT_CARD', 'DEBIT_CARD', 'BOLETO', 'CASH'].includes(
+        input.paymentMethod,
+      )
+    ) {
+      throw new BadRequestException('Invalid credit payment method');
     }
 
     return this.withTransaction(async (client) => {
@@ -250,6 +289,7 @@ export class BillingLedgerService {
       const description =
         input.description || `Crédito de R$ ${Number(input.amount).toFixed(2)}`;
 
+      const billingItemId = this.generateId();
       await client.query(
         `
           INSERT INTO transactions (
@@ -287,7 +327,7 @@ export class BillingLedgerService {
             purchased_at
           ) VALUES ($1, $2, $3, $4, $5)
         `,
-        [this.generateId(), billing.id, transactionId, 'CREDIT', new Date()],
+        [billingItemId, billing.id, transactionId, 'CREDIT', new Date()],
       );
 
       const updatedBilling = await this.updateBillingProjection(
@@ -305,6 +345,7 @@ export class BillingLedgerService {
           billingId: billing.id,
           transactionId,
           amount: input.amount,
+          billingItemId,
           paymentMethod: input.paymentMethod,
           before: {
             amount: Number(billing.amount),
@@ -333,13 +374,18 @@ export class BillingLedgerService {
     }
 
     input.items.forEach((item) => {
-      if (!item.quantity || Number(item.quantity) <= 0) {
+      if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
         throw new BadRequestException(
           'Sale item quantity must be greater than zero',
         );
       }
 
-      if (!item.price || Number(item.price) <= 0) {
+      if (
+        !item.price ||
+        Number(item.price) <= 0 ||
+        !this.isMoney(item.price) ||
+        !this.isMoney(Math.round(item.price * item.quantity * 100) / 100)
+      ) {
         throw new BadRequestException(
           'Sale item price must be greater than zero',
         );
@@ -353,6 +399,7 @@ export class BillingLedgerService {
       );
       this.assertBillingIsMutable(billing);
       const transactionIds: string[] = [];
+      const billingItemIds: string[] = [];
 
       for (const item of input.items) {
         const product = await this.getProduct(
@@ -365,6 +412,8 @@ export class BillingLedgerService {
         product.setPrice(price);
         const transactionId = this.generateId();
         transactionIds.push(transactionId);
+        const billingItemId = this.generateId();
+        billingItemIds.push(billingItemId);
 
         await client.query(
           `
@@ -404,7 +453,7 @@ export class BillingLedgerService {
             ) VALUES ($1, $2, $3, $4, $5)
           `,
           [
-            this.generateId(),
+            billingItemId,
             billing.id,
             transactionId,
             'DEBIT',
@@ -427,6 +476,7 @@ export class BillingLedgerService {
         data: {
           billingId: billing.id,
           transactionIds,
+          billingItemIds,
           before: {
             amount: Number(billing.amount),
             amountPayed: Number(billing.amount_payed),
@@ -588,6 +638,8 @@ export class BillingLedgerService {
         JOIN transactions ON transactions.id = billing_items.transaction_id
         WHERE billing_items.billing_id = $1
           AND transactions.account_id = $2
+          AND billing_items.reversal_of_item_id IS NULL
+          AND NOT EXISTS (SELECT 1 FROM billing_items reversals WHERE reversals.reversal_of_item_id = billing_items.id)
       `,
       [billingId, accountId],
     );
@@ -616,8 +668,16 @@ export class BillingLedgerService {
     client: PoolClient,
   ): Promise<BillingsTable> {
     this.assertBillingIsMutable(billing);
+    if (
+      !input.description?.trim() ||
+      !(input.amount > 0) ||
+      !this.isMoney(input.amount)
+    ) {
+      throw new BadRequestException('Invalid debit amount or description');
+    }
 
     const transactionId = this.generateId();
+    const billingItemId = this.generateId();
     await client.query(
       `
         INSERT INTO transactions (
@@ -654,7 +714,7 @@ export class BillingLedgerService {
         ) VALUES ($1, $2, $3, $4, $5)
       `,
       [
-        this.generateId(),
+        billingItemId,
         billing.id,
         transactionId,
         'DEBIT',
@@ -662,7 +722,26 @@ export class BillingLedgerService {
       ],
     );
 
-    return this.updateBillingProjection(billing.id, input.accountId, client);
+    const updatedBilling = await this.updateBillingProjection(
+      billing.id,
+      input.accountId,
+      client,
+    );
+    await this.insertBillingLog(client, {
+      accountId: input.accountId,
+      userId: input.userId,
+      userName: input.userName,
+      userEmail: input.userEmail,
+      logType: 'billing_debit',
+      data: {
+        billingId: billing.id,
+        transactionId,
+        billingItemId,
+        before: billing,
+        after: updatedBilling,
+      },
+    });
+    return updatedBilling;
   }
 
   private async resolveSaleBilling(
@@ -692,6 +771,7 @@ export class BillingLedgerService {
       input.clientId,
       input.accountId,
       client,
+      true,
     );
     const activeBilling = await this.getActiveBilling(
       { accountId: input.accountId, clientId: input.clientId },
@@ -775,6 +855,7 @@ export class BillingLedgerService {
     clientId: string,
     accountId: string,
     client: Pick<PoolClient, 'query'>,
+    lock = false,
   ): Promise<ClientRow> {
     const [aClient] = await this.queryRows<ClientRow>(
       client,
@@ -782,6 +863,7 @@ export class BillingLedgerService {
         SELECT id, account_id, name
         FROM clients
         WHERE id = $1
+        ${lock ? 'FOR UPDATE' : ''}
       `,
       [clientId],
     );
@@ -947,6 +1029,14 @@ export class BillingLedgerService {
     }
 
     return new Date(`${value.split('T')[0]}T12:00:00Z`);
+  }
+
+  private isMoney(value: number) {
+    return (
+      Number.isFinite(value) &&
+      value <= 9999.99 &&
+      Math.abs(value * 100 - Math.round(value * 100)) < 1e-8
+    );
   }
 
   private async queryRows<T>(

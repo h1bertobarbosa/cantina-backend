@@ -38,6 +38,9 @@ export class BillingsController {
     return this.ledgerService.createBilling({
       ...body,
       accountId: user.accountId,
+      userId: user.sub,
+      userName: user.name,
+      userEmail: user.email,
     });
   }
 
@@ -59,6 +62,9 @@ export class BillingsController {
       ...body,
       accountId: user.accountId,
       billingId: id,
+      userId: user.sub,
+      userName: user.name,
+      userEmail: user.email,
     });
   }
 

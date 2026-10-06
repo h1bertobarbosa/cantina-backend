@@ -121,8 +121,8 @@ describe('BillingsService', () => {
     expect(result).toMatchObject({
       openAmount: 99,
       ledgerTotal: 40,
-      debitTotal: 150,
-      creditTotal: 110,
+      debitTotal: 50,
+      creditTotal: 10,
       creditBalance: 0,
       billing: { status: 'PARTIAL', amount: 99 },
     });

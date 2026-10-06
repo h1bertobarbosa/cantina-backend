@@ -46,6 +46,9 @@ describe('BillingsController management', () => {
     expect(ledger.createBilling).toHaveBeenCalledWith({
       ...body,
       accountId: 'account',
+      userId: 'user',
+      userName: 'Operator',
+      userEmail: 'operator@test.local',
     });
   });
 
@@ -64,6 +67,9 @@ describe('BillingsController management', () => {
       ...body,
       accountId: 'account',
       billingId: 'billing',
+      userId: 'user',
+      userName: 'Operator',
+      userEmail: 'operator@test.local',
     });
   });
 

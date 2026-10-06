@@ -108,6 +108,8 @@ export class DashboardService {
               JOIN transactions ON transactions.id = billing_items.transaction_id
               WHERE billing_items.billing_id = billings.id
                 AND billing_items.type = 'DEBIT'
+                AND billing_items.reversal_of_item_id IS NULL
+                AND NOT EXISTS (SELECT 1 FROM billing_items reversals WHERE reversals.reversal_of_item_id = billing_items.id)
                 AND ${businessDateClause}
             )
         `,
@@ -129,6 +131,8 @@ export class DashboardService {
           FROM transactions
           LEFT JOIN billing_items ON billing_items.transaction_id = transactions.id
           WHERE ${receivedDateClause}
+            AND billing_items.reversal_of_item_id IS NULL
+            AND NOT EXISTS (SELECT 1 FROM billing_items reversals WHERE reversals.reversal_of_item_id = billing_items.id)
             AND transactions.payed_at IS NOT NULL
             AND (
               billing_items.type = 'CREDIT'
@@ -147,6 +151,8 @@ export class DashboardService {
           FROM transactions
           LEFT JOIN billing_items ON billing_items.transaction_id = transactions.id
           WHERE ${businessDateClause}
+            AND billing_items.reversal_of_item_id IS NULL
+            AND NOT EXISTS (SELECT 1 FROM billing_items reversals WHERE reversals.reversal_of_item_id = billing_items.id)
             AND transactions.product_id IS NOT NULL
             AND (
               billing_items.type = 'DEBIT'
@@ -161,6 +167,8 @@ export class DashboardService {
           FROM transactions
           LEFT JOIN billing_items ON billing_items.transaction_id = transactions.id
           WHERE ${businessDateClause}
+            AND billing_items.reversal_of_item_id IS NULL
+            AND NOT EXISTS (SELECT 1 FROM billing_items reversals WHERE reversals.reversal_of_item_id = billing_items.id)
             AND transactions.product_id IS NOT NULL
             AND (
               billing_items.type = 'DEBIT'

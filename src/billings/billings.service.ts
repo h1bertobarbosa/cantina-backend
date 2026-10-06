@@ -173,12 +173,15 @@ export class BillingsService {
   async getLedger(input: InputGetById) {
     const billing = await this.findOne(input);
     const items = await this.getBillingItems(input);
-    const debitTotal = items.reduce(
+    const effectiveItems = items.filter(
+      (item) => !item.reversalOfItemId && !item.reversedByItemId,
+    );
+    const debitTotal = effectiveItems.reduce(
       (sum, item) =>
         sum + (item.type === 'DEBIT' ? Math.round(item.amount * 100) : 0),
       0,
     );
-    const creditTotal = items.reduce(
+    const creditTotal = effectiveItems.reduce(
       (sum, item) =>
         sum + (item.type === 'CREDIT' ? Math.round(item.amount * 100) : 0),
       0,
