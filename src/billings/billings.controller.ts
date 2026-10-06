@@ -43,7 +43,7 @@ export class BillingsController {
 
   @Get(':id/ledger')
   ledger(@Param('id') id: string, @User() user: UserSession) {
-    return this.billingsService.getBillingItems({
+    return this.billingsService.getLedger({
       accountId: user.accountId,
       id,
     });

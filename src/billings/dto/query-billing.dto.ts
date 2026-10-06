@@ -29,7 +29,7 @@ export class QueryBillingDto {
   paymentMethod?: string;
   @ApiPropertyOptional()
   @IsOptional()
-  status?: 'open' | 'partial' | 'paid';
+  status?: 'open' | 'partial' | 'paid' | 'credit_balance';
   accountId: string;
   constructor(partial: Partial<QueryBillingDto>) {
     Object.assign(this, partial);

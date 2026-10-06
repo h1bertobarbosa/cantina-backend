@@ -19,7 +19,6 @@ import {
 } from '../libs/src/guid/contract/guid-provider.interface';
 import { LOGGER } from '../logger/logger.const';
 import { ClientTable } from '../clients/clients.service';
-import { BillingItemTypeEnum } from './entities/billing-item-type.vo';
 
 const BILLINGS_ORDER_BY_COLUMNS: Record<string, string> = {
   client_name: 'clients.name',
@@ -30,12 +29,6 @@ const BILLINGS_ORDER_BY_COLUMNS: Record<string, string> = {
   payed_at: 'billings.payed_at',
   created_at: 'billings.created_at',
 };
-
-const normalizeText = (value: string) =>
-  value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
 
 export interface InputGetById {
   id: string;
@@ -87,17 +80,16 @@ export class BillingsService {
       queryParams.push(paymentMethod);
     }
     if (status === 'open') {
-      queryParts.push(
-        `AND billings.payed_at IS NULL AND COALESCE(billings.amount_payed, 0) = 0`,
-      );
+      queryParts.push(`AND billings.status = 'OPEN'`);
     }
     if (status === 'partial') {
-      queryParts.push(
-        `AND billings.payed_at IS NULL AND COALESCE(billings.amount_payed, 0) > 0`,
-      );
+      queryParts.push(`AND billings.status = 'PARTIAL'`);
     }
     if (status === 'paid') {
-      queryParts.push(`AND billings.payed_at IS NOT NULL`);
+      queryParts.push(`AND billings.status = 'PAID'`);
+    }
+    if (status === 'credit_balance') {
+      queryParts.push(`AND billings.status = 'CREDIT_BALANCE'`);
     }
     const finalQueryCount = queryParts.join(' ');
     const queryParamsCount = [...queryParams];
@@ -154,28 +146,15 @@ export class BillingsService {
         `SELECT bi.id, bi.type, t.description, t.amount, bi.purchased_at
      FROM billing_items bi
      JOIN transactions t ON t.id = bi.transaction_id
-     WHERE bi.billing_id = $1
+     WHERE bi.billing_id = $1 AND t.account_id = $2
      ORDER BY bi.created_at DESC`,
-        [id],
+        [id, accountId],
       ),
     ]);
 
     if (!billing) {
       throw new NotFoundException('Billing not found');
     }
-    const totalBilling = items.reduce((sum, item) => {
-      const isCredito =
-        item.type === BillingItemTypeEnum.CREDIT ||
-        normalizeText(String(item.description || '')).includes('credito');
-      const amount = parseFloat(item.amount) || 0;
-      return isCredito ? sum - amount : sum + amount;
-    }, 0);
-
-    await this.postgresService.query(
-      `UPDATE billings SET amount = $1 WHERE id = $2 AND payment_method = 'TO_RECEIVE'`,
-      [totalBilling, id],
-    );
-
     return {
       client: {
         name: billing.name,
@@ -191,9 +170,33 @@ export class BillingsService {
       })),
     };
   }
+  async getLedger(input: InputGetById) {
+    const billing = await this.findOne(input);
+    const items = await this.getBillingItems(input);
+    const debitTotal = items.reduce(
+      (sum, item) =>
+        sum + (item.type === 'DEBIT' ? Math.round(item.amount * 100) : 0),
+      0,
+    );
+    const creditTotal = items.reduce(
+      (sum, item) =>
+        sum + (item.type === 'CREDIT' ? Math.round(item.amount * 100) : 0),
+      0,
+    );
+    return {
+      billing,
+      items,
+      openAmount: billing.amount,
+      ledgerTotal: (debitTotal - creditTotal) / 100,
+      debitTotal: debitTotal / 100,
+      creditTotal: creditTotal / 100,
+      creditBalance: Math.max(0, (creditTotal - debitTotal) / 100),
+    };
+  }
   async getBillingItems({ id, accountId }: InputGetById) {
     const items = await this.postgresService.query<BillingItemsTable>(
-      `SELECT bi.id,bi.type,bi.created_at,t.amount,t.client_name,t.description,t.payment_method,bi.purchased_at 
+      `SELECT bi.*,t.amount,t.client_name,t.description,t.payment_method,
+       (SELECT r.id FROM billing_items r WHERE r.reversal_of_item_id = bi.id) AS reversed_by_item_id
        FROM billing_items bi
        JOIN transactions t ON t.id = bi.transaction_id
        WHERE bi.billing_id = $1 AND t.account_id = $2

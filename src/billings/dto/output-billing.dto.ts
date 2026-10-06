@@ -12,6 +12,7 @@ export default class OutputBillingDto {
     readonly createdAt?: Date,
     readonly updatedAt?: Date,
     readonly clientName?: string,
+    readonly status?: string,
   ) {}
 
   static fromTable(billing: BillingsTable & { name?: string }) {
@@ -26,6 +27,7 @@ export default class OutputBillingDto {
       billing.created_at,
       billing.updated_at,
       billing.name,
+      billing.status,
     );
   }
 }

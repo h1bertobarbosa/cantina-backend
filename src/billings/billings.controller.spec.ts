@@ -19,7 +19,7 @@ describe('BillingsController management', () => {
   };
   let controller: BillingsController;
   let ledger: Record<string, jest.Mock>;
-  let reads: { getBillingItems: jest.Mock };
+  let reads: { getLedger: jest.Mock };
   const result = { id: 'billing', amount: '25.00' };
 
   beforeEach(() => {
@@ -28,7 +28,7 @@ describe('BillingsController management', () => {
         (name) => [name, jest.fn().mockResolvedValue(result)],
       ),
     );
-    reads = { getBillingItems: jest.fn().mockResolvedValue(result) };
+    reads = { getLedger: jest.fn().mockResolvedValue(result) };
     controller = new BillingsController(
       reads as unknown as BillingsService,
       ledger as unknown as BillingLedgerService,
@@ -51,7 +51,7 @@ describe('BillingsController management', () => {
 
   it('reads the ledger within the authenticated account', async () => {
     expect(await controller.ledger('billing', user)).toEqual(result);
-    expect(reads.getBillingItems).toHaveBeenCalledWith({
+    expect(reads.getLedger).toHaveBeenCalledWith({
       id: 'billing',
       accountId: 'account',
     });
