@@ -189,11 +189,9 @@ describe('BillingLedgerService', () => {
   });
 
   it('rejects billing creation when the client belongs to another account', async () => {
-    client.query
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({
-        rows: [{ ...aClient, account_id: 'other-account-id' }],
-      });
+    client.query.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({
+      rows: [{ ...aClient, account_id: 'other-account-id' }],
+    });
 
     await expect(
       service.createBilling({

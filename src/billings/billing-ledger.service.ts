@@ -325,18 +325,24 @@ export class BillingLedgerService {
     });
   }
 
-  async addSale(input: AddBillingSaleInput): Promise<BillingsTable> {
+  async addSale(
+    input: AddBillingSaleInput,
+  ): Promise<BillingsTable & { saleTransactionId: string }> {
     if (!input.items?.length) {
       throw new BadRequestException('Sale must have at least one item');
     }
 
     input.items.forEach((item) => {
       if (!item.quantity || Number(item.quantity) <= 0) {
-        throw new BadRequestException('Sale item quantity must be greater than zero');
+        throw new BadRequestException(
+          'Sale item quantity must be greater than zero',
+        );
       }
 
       if (!item.price || Number(item.price) <= 0) {
-        throw new BadRequestException('Sale item price must be greater than zero');
+        throw new BadRequestException(
+          'Sale item price must be greater than zero',
+        );
       }
     });
 
@@ -434,7 +440,7 @@ export class BillingLedgerService {
         },
       });
 
-      return updatedBilling;
+      return { ...updatedBilling, saleTransactionId: transactionIds[0] };
     });
   }
 
@@ -682,7 +688,11 @@ export class BillingLedgerService {
       throw new BadRequestException('Client is required for sale billing');
     }
 
-    const aClient = await this.getClient(input.clientId, input.accountId, client);
+    const aClient = await this.getClient(
+      input.clientId,
+      input.accountId,
+      client,
+    );
     const activeBilling = await this.getActiveBilling(
       { accountId: input.accountId, clientId: input.clientId },
       client,
@@ -863,7 +873,11 @@ export class BillingLedgerService {
     accountId: string,
     client: PoolClient,
   ): Promise<BillingsTable> {
-    const totals = await this.calculateLedgerTotals(billingId, accountId, client);
+    const totals = await this.calculateLedgerTotals(
+      billingId,
+      accountId,
+      client,
+    );
     const status = this.getStatusFromTotals(totals);
     const openAmount = Math.max(totals.openAmount, 0);
     const payedAt = ['PAID', 'CREDIT_BALANCE'].includes(status)

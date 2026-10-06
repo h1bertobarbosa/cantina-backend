@@ -1,5 +1,5 @@
 import { LoggerService } from '@nestjs/common';
-import { BillingItemTypeEnum } from 'src/billings/entities/billing-item-type.vo';
+import { BillingLedgerService } from 'src/billings/billing-ledger.service';
 import { GuidProvider } from 'src/libs/src/guid/contract/guid-provider.interface';
 import { Transaction } from 'src/transactions/entities/transaction.entity';
 import { TransactionsRepository } from 'src/transactions/repository/transactions-repository.interface';
@@ -40,6 +40,7 @@ describe('NewSaleService', () => {
   let guidProvider: jest.Mocked<GuidProvider>;
   let logger: jest.Mocked<LoggerService>;
   let service: NewSaleService;
+  let ledger: { addSale: jest.Mock };
 
   beforeEach(() => {
     postgresService = {
@@ -50,7 +51,9 @@ describe('NewSaleService', () => {
         if (sql.includes('SELECT name,account_id FROM clients')) {
           return Promise.resolve([client]);
         }
-        if (sql.includes('SELECT id,account_id,amount,amount_payed FROM billings')) {
+        if (
+          sql.includes('SELECT id,account_id,amount,amount_payed FROM billings')
+        ) {
           return Promise.resolve([]);
         }
         if (sql.includes('INSERT INTO billings')) {
@@ -88,11 +91,20 @@ describe('NewSaleService', () => {
       warn: jest.fn(),
     };
 
+    ledger = {
+      addSale: jest
+        .fn()
+        .mockResolvedValue({
+          id: 'billing-id',
+          saleTransactionId: 'transaction-id',
+        }),
+    };
     service = new NewSaleService(
       postgresService as never,
       transactionRepository,
       guidProvider,
       logger,
+      ledger as unknown as BillingLedgerService,
     );
   });
 
@@ -131,33 +143,55 @@ describe('NewSaleService', () => {
     );
   });
 
-  it('inserts a create_sale log with created billing data for receivable sales', async () => {
-    await service.execute({
+  it('delegates receivable sales to the ledger and preserves the sale output', async () => {
+    postgresService.query.mockResolvedValue([
+      {
+        id: 'transaction-id',
+        client_name: 'Client Name',
+        description: 'Sale',
+        created_at: new Date(),
+        updated_at: new Date(),
+        purchased_at: new Date('2026-08-29T12:00:00Z'),
+      },
+    ]);
+    const result = await service.execute({
       ...saleInput,
       paymentMethod: 'TO_RECEIVE',
     });
-
-    expect(postgresService.query).toHaveBeenCalledWith(
-      'INSERT INTO billing_items (id, billing_id, transaction_id, type, purchased_at) VALUES ($1, $2, $3, $4, $5)',
-      [
-        'generated-id',
-        'billing-id',
-        'transaction-id',
-        BillingItemTypeEnum.DEBIT,
-        '2026-08-29T12:00:00.000Z',
-      ],
-    );
-
-    const logInsert = postgresService.query.mock.calls.find(([sql]) =>
-      sql.includes('INSERT INTO logs'),
-    );
-    const data = JSON.parse(logInsert[1][5]);
-
-    expect(data.billing).toEqual({
-      action: 'created',
-      id: 'billing-id',
+    expect(ledger.addSale).toHaveBeenCalledWith({
+      accountId: 'account-id',
+      clientId: 'client-id',
+      items: saleInput.items,
+      buyDate: '2026-08-29',
+      userId: 'user-id',
+      userName: 'User Name',
+      userEmail: 'user@example.com',
+    });
+    expect(result).toMatchObject({
+      id: 'transaction-id',
+      clientName: 'Client Name',
+      paymentMethod: 'TO_RECEIVE',
       amount: 20,
     });
+    expect(postgresService.query.mock.calls[0][1]).toEqual([
+      'transaction-id',
+      'account-id',
+    ]);
+    expect(transactionRepository.save).not.toHaveBeenCalled();
+    expect(
+      postgresService.query.mock.calls.every(([sql]) =>
+        sql.startsWith('SELECT'),
+      ),
+    ).toBe(true);
+  });
+
+  it('propagates a failed ledger transaction without independent sale writes', async () => {
+    ledger.addSale.mockRejectedValue(new Error('Product not found'));
+    await expect(
+      service.execute({ ...saleInput, paymentMethod: 'TO_RECEIVE' }),
+    ).rejects.toThrow('Product not found');
+    expect(transactionRepository.save).not.toHaveBeenCalled();
+    expect(postgresService.query).not.toHaveBeenCalled();
   });
 
   it('does not fail the sale when create_sale log insertion fails', async () => {

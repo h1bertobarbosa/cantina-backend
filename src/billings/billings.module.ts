@@ -17,5 +17,6 @@ import { BillingLedgerService } from './billing-ledger.service';
     PayBillingService,
     BillingLedgerService,
   ],
+  exports: [BillingLedgerService],
 })
 export class BillingsModule {}
