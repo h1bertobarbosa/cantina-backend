@@ -277,4 +277,235 @@ describe('BillingLedgerService', () => {
     expect(client.query.mock.calls.map(([sql]) => sql)).toContain('ROLLBACK');
     expect(client.release).toHaveBeenCalledTimes(1);
   });
+
+  it('adds a partial credit and logs the billing change', async () => {
+    guidProvider.generate
+      .mockReset()
+      .mockReturnValueOnce('transaction-id')
+      .mockReturnValueOnce('billing-item-id')
+      .mockReturnValueOnce('log-id')
+      .mockReturnValue('generated-id');
+    const updatedBilling = {
+      ...billing,
+      amount: '60.00',
+      amount_payed: '40.00',
+      status: 'PARTIAL',
+    };
+    client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [billing] })
+      .mockResolvedValueOnce({ rows: [aClient] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [{ debit_total: '100.00', credit_total: '40.00' }],
+      })
+      .mockResolvedValueOnce({ rows: [updatedBilling] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const result = await service.addCredit({
+      accountId: 'account-id',
+      billingId: 'billing-id',
+      amount: 40,
+      paymentMethod: 'PIX',
+      userId: 'user-id',
+      userName: 'User Name',
+      userEmail: 'user@example.com',
+    });
+
+    expect(result).toBe(updatedBilling);
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO transactions'),
+      [
+        'transaction-id',
+        'account-id',
+        'client-id',
+        'Client Name',
+        'Crédito de R$ 40.00',
+        'PIX',
+        40,
+        1,
+        expect.any(Date),
+      ],
+    );
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO billing_items'),
+      [
+        'billing-item-id',
+        'billing-id',
+        'transaction-id',
+        'CREDIT',
+        expect.any(Date),
+      ],
+    );
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE billings'),
+      [60, 40, 'PARTIAL', null, expect.any(Date), 'billing-id', 'account-id'],
+    );
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO logs'),
+      [
+        'log-id',
+        'account-id',
+        'user-id',
+        'User Name',
+        'user@example.com',
+        expect.any(String),
+        'billing_credit',
+        null,
+      ],
+    );
+  });
+
+  it('closes the billing when credit equals the open amount', async () => {
+    const paidBilling = {
+      ...billing,
+      amount: '0.00',
+      amount_payed: '100.00',
+      status: 'PAID',
+      payed_at: new Date('2026-10-06T12:00:00.000Z'),
+    };
+    client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [billing] })
+      .mockResolvedValueOnce({ rows: [aClient] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [{ debit_total: '100.00', credit_total: '100.00' }],
+      })
+      .mockResolvedValueOnce({ rows: [paidBilling] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await service.addCredit({
+      accountId: 'account-id',
+      billingId: 'billing-id',
+      amount: 100,
+      paymentMethod: 'PIX',
+      userId: 'user-id',
+      userName: 'User Name',
+      userEmail: 'user@example.com',
+    });
+
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE billings'),
+      [
+        0,
+        100,
+        'PAID',
+        expect.any(Date),
+        expect.any(Date),
+        'billing-id',
+        'account-id',
+      ],
+    );
+  });
+
+  it('stores overpayment as credit balance without keeping an active billing', async () => {
+    const creditBalanceBilling = {
+      ...billing,
+      amount: '0.00',
+      amount_payed: '120.00',
+      status: 'CREDIT_BALANCE',
+      payed_at: new Date('2026-10-06T12:00:00.000Z'),
+    };
+    client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [billing] })
+      .mockResolvedValueOnce({ rows: [aClient] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [{ debit_total: '100.00', credit_total: '120.00' }],
+      })
+      .mockResolvedValueOnce({ rows: [creditBalanceBilling] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await service.addCredit({
+      accountId: 'account-id',
+      billingId: 'billing-id',
+      amount: 120,
+      paymentMethod: 'PIX',
+      userId: 'user-id',
+      userName: 'User Name',
+      userEmail: 'user@example.com',
+    });
+
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE billings'),
+      [
+        0,
+        120,
+        'CREDIT_BALANCE',
+        expect.any(Date),
+        expect.any(Date),
+        'billing-id',
+        'account-id',
+      ],
+    );
+  });
+
+  it('rejects a credit amount that is not greater than zero', async () => {
+    await expect(
+      service.addCredit({
+        accountId: 'account-id',
+        billingId: 'billing-id',
+        amount: 0,
+        paymentMethod: 'PIX',
+        userId: 'user-id',
+        userName: 'User Name',
+        userEmail: 'user@example.com',
+      }),
+    ).rejects.toThrow('Credit amount must be greater than zero');
+
+    expect(postgresService.getClient).not.toHaveBeenCalled();
+  });
+
+  it('rejects credit against a paid billing', async () => {
+    client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ ...billing, status: 'PAID' }] });
+
+    await expect(
+      service.addCredit({
+        accountId: 'account-id',
+        billingId: 'billing-id',
+        amount: 10,
+        paymentMethod: 'PIX',
+        userId: 'user-id',
+        userName: 'User Name',
+        userEmail: 'user@example.com',
+      }),
+    ).rejects.toThrow('Billing is not open or partial');
+    expect(client.query.mock.calls.map(([sql]) => sql)).toContain('ROLLBACK');
+  });
+
+  it('rolls back credit when the audit log insert fails', async () => {
+    client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [billing] })
+      .mockResolvedValueOnce({ rows: [aClient] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [{ debit_total: '100.00', credit_total: '40.00' }],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ ...billing, amount: '60.00', status: 'PARTIAL' }],
+      })
+      .mockRejectedValueOnce(new Error('log failed'));
+
+    await expect(
+      service.addCredit({
+        accountId: 'account-id',
+        billingId: 'billing-id',
+        amount: 40,
+        paymentMethod: 'PIX',
+        userId: 'user-id',
+        userName: 'User Name',
+        userEmail: 'user@example.com',
+      }),
+    ).rejects.toThrow('log failed');
+    expect(client.query.mock.calls.map(([sql]) => sql)).toContain('ROLLBACK');
+  });
 });

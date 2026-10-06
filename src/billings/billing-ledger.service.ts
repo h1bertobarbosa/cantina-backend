@@ -40,6 +40,17 @@ export interface AddBillingDebitInput {
   purchaseDate?: string;
 }
 
+export interface AddBillingCreditInput {
+  accountId: string;
+  billingId: string;
+  amount: number;
+  paymentMethod: string;
+  description?: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+}
+
 interface ClientRow {
   id: string;
   account_id: string;
@@ -172,6 +183,102 @@ export class BillingLedgerService {
       );
 
       return this.addDebitToBilling(billing, aClient.name, input, client);
+    });
+  }
+
+  async addCredit(input: AddBillingCreditInput): Promise<BillingsTable> {
+    if (!input.amount || Number(input.amount) <= 0) {
+      throw new BadRequestException('Credit amount must be greater than zero');
+    }
+
+    return this.withTransaction(async (client) => {
+      const billing = await this.getBillingForUpdate(
+        input.billingId,
+        input.accountId,
+        client,
+      );
+      this.assertBillingIsMutable(billing);
+      const aClient = await this.getClient(
+        billing.client_id,
+        input.accountId,
+        client,
+      );
+      const transactionId = this.generateId();
+      const description =
+        input.description || `Crédito de R$ ${Number(input.amount).toFixed(2)}`;
+
+      await client.query(
+        `
+          INSERT INTO transactions (
+            id,
+            account_id,
+            client_id,
+            client_name,
+            description,
+            payment_method,
+            amount,
+            quantity,
+            payed_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `,
+        [
+          transactionId,
+          input.accountId,
+          billing.client_id,
+          aClient.name,
+          description,
+          input.paymentMethod,
+          input.amount,
+          1,
+          new Date(),
+        ],
+      );
+
+      await client.query(
+        `
+          INSERT INTO billing_items (
+            id,
+            billing_id,
+            transaction_id,
+            type,
+            purchased_at
+          ) VALUES ($1, $2, $3, $4, $5)
+        `,
+        [this.generateId(), billing.id, transactionId, 'CREDIT', new Date()],
+      );
+
+      const updatedBilling = await this.updateBillingProjection(
+        billing.id,
+        input.accountId,
+        client,
+      );
+      await this.insertBillingLog(client, {
+        accountId: input.accountId,
+        userId: input.userId,
+        userName: input.userName,
+        userEmail: input.userEmail,
+        logType: 'billing_credit',
+        data: {
+          billingId: billing.id,
+          transactionId,
+          amount: input.amount,
+          paymentMethod: input.paymentMethod,
+          before: {
+            amount: Number(billing.amount),
+            amountPayed: Number(billing.amount_payed),
+            status: billing.status,
+            payedAt: billing.payed_at,
+          },
+          after: {
+            amount: Number(updatedBilling.amount),
+            amountPayed: Number(updatedBilling.amount_payed),
+            status: updatedBilling.status,
+            payedAt: updatedBilling.payed_at,
+          },
+        },
+      });
+
+      return updatedBilling;
     });
   }
 
@@ -327,7 +434,9 @@ export class BillingLedgerService {
     const totals = await this.calculateLedgerTotals(billingId, accountId, client);
     const status = this.getStatusFromTotals(totals);
     const openAmount = Math.max(totals.openAmount, 0);
-    const payedAt = status === 'PAID' ? new Date() : null;
+    const payedAt = ['PAID', 'CREDIT_BALANCE'].includes(status)
+      ? new Date()
+      : null;
     const [billing] = await this.queryRows<BillingsTable>(
       client,
       `
@@ -393,5 +502,42 @@ export class BillingLedgerService {
   ): Promise<T[]> {
     const result = await client.query<T>(sql, params);
     return result.rows;
+  }
+
+  private async insertBillingLog(
+    client: Pick<PoolClient, 'query'>,
+    input: {
+      accountId: string;
+      userId: string;
+      userName: string;
+      userEmail: string;
+      logType: string;
+      data: unknown;
+    },
+  ) {
+    await client.query(
+      `
+        INSERT INTO logs (
+          id,
+          account_id,
+          user_id,
+          user_name,
+          user_email,
+          data,
+          log_type,
+          obs
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `,
+      [
+        this.generateId(),
+        input.accountId,
+        input.userId,
+        input.userName,
+        input.userEmail,
+        JSON.stringify(input.data),
+        input.logType,
+        null,
+      ],
+    );
   }
 }
