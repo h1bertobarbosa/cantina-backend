@@ -112,7 +112,7 @@ describe('BillingLedgerService', () => {
     );
   });
 
-  it('calculates ledger totals without original items that have reversal items', async () => {
+  it('calculates ledger totals from original and reversal items', async () => {
     client.query.mockResolvedValueOnce({
       rows: [{ debit_total: '150.00', credit_total: '40.00' }],
     });
@@ -128,12 +128,10 @@ describe('BillingLedgerService', () => {
       creditTotal: 40,
       openAmount: 110,
     });
-    expect(client.query).toHaveBeenCalledWith(
-      expect.stringContaining(
-        'WHERE reversals.reversal_of_item_id = billing_items.id',
-      ),
-      ['billing-id', 'account-id'],
-    );
+    const [sql, params] = client.query.mock.calls[0];
+    expect(sql).toContain('FROM billing_items');
+    expect(sql).not.toContain('reversals.reversal_of_item_id');
+    expect(params).toEqual(['billing-id', 'account-id']);
   });
 
   it('creates an open billing when the client has no active billing', async () => {
@@ -709,6 +707,291 @@ describe('BillingLedgerService', () => {
         userEmail: 'user@example.com',
       }),
     ).rejects.toThrow('item insert failed');
+    expect(client.query.mock.calls.map(([sql]) => sql)).toContain('ROLLBACK');
+  });
+
+  it('reverses a debit item with a credit reversal and logs the change', async () => {
+    guidProvider.generate
+      .mockReset()
+      .mockReturnValueOnce('reversal-transaction-id')
+      .mockReturnValueOnce('reversal-item-id')
+      .mockReturnValueOnce('log-id')
+      .mockReturnValue('generated-id');
+    const debitItem = {
+      id: 'billing-item-id',
+      transaction_id: 'transaction-id',
+      type: 'DEBIT',
+      reversal_of_item_id: null,
+      amount: '100.00',
+      client_id: 'client-id',
+      client_name: 'Client Name',
+      description: 'Compra',
+      payment_method: 'TO_RECEIVE',
+    };
+    const updatedBilling = {
+      ...billing,
+      amount: '0.00',
+      amount_payed: '100.00',
+      status: 'PAID',
+      payed_at: new Date('2026-10-06T12:00:00.000Z'),
+    };
+    client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [billing] })
+      .mockResolvedValueOnce({ rows: [debitItem] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [{ debit_total: '100.00', credit_total: '100.00' }],
+      })
+      .mockResolvedValueOnce({ rows: [updatedBilling] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const result = await service.reverseItem({
+      accountId: 'account-id',
+      billingId: 'billing-id',
+      itemId: 'billing-item-id',
+      reason: 'Produto cancelado',
+      userId: 'user-id',
+      userName: 'User Name',
+      userEmail: 'user@example.com',
+    });
+
+    expect(result).toBe(updatedBilling);
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO transactions'),
+      [
+        'reversal-transaction-id',
+        'account-id',
+        'client-id',
+        'Client Name',
+        'Estorno: Compra',
+        'TO_RECEIVE',
+        100,
+        1,
+      ],
+    );
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO billing_items'),
+      [
+        'reversal-item-id',
+        'billing-id',
+        'reversal-transaction-id',
+        'CREDIT',
+        expect.any(Date),
+        'billing-item-id',
+        'Produto cancelado',
+        expect.any(Date),
+        'user-id',
+        'User Name',
+        'user@example.com',
+      ],
+    );
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO logs'),
+      [
+        'log-id',
+        'account-id',
+        'user-id',
+        'User Name',
+        'user@example.com',
+        expect.any(String),
+        'billing_item_reversal',
+        null,
+      ],
+    );
+  });
+
+  it('reverses a credit item with a debit reversal', async () => {
+    guidProvider.generate
+      .mockReset()
+      .mockReturnValueOnce('reversal-transaction-id')
+      .mockReturnValueOnce('reversal-item-id')
+      .mockReturnValueOnce('log-id')
+      .mockReturnValue('generated-id');
+    const creditItem = {
+      id: 'credit-item-id',
+      transaction_id: 'credit-transaction-id',
+      type: 'CREDIT',
+      reversal_of_item_id: null,
+      amount: '40.00',
+      client_id: 'client-id',
+      client_name: 'Client Name',
+      description: 'Pagamento',
+      payment_method: 'PIX',
+    };
+    client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [billing] })
+      .mockResolvedValueOnce({ rows: [creditItem] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [{ debit_total: '140.00', credit_total: '40.00' }],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ ...billing, amount: '100.00', status: 'PARTIAL' }],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await service.reverseItem({
+      accountId: 'account-id',
+      billingId: 'billing-id',
+      itemId: 'credit-item-id',
+      reason: 'Pagamento errado',
+      userId: 'user-id',
+      userName: 'User Name',
+      userEmail: 'user@example.com',
+    });
+
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO billing_items'),
+      [
+        'reversal-item-id',
+        'billing-id',
+        'reversal-transaction-id',
+        'DEBIT',
+        expect.any(Date),
+        'credit-item-id',
+        'Pagamento errado',
+        expect.any(Date),
+        'user-id',
+        'User Name',
+        'user@example.com',
+      ],
+    );
+  });
+
+  it('rejects reversal with a blank reason before opening a transaction', async () => {
+    await expect(
+      service.reverseItem({
+        accountId: 'account-id',
+        billingId: 'billing-id',
+        itemId: 'billing-item-id',
+        reason: '   ',
+        userId: 'user-id',
+        userName: 'User Name',
+        userEmail: 'user@example.com',
+      }),
+    ).rejects.toThrow('Reversal reason is required');
+    expect(postgresService.getClient).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate item reversal with conflict details', async () => {
+    const debitItem = {
+      id: 'billing-item-id',
+      transaction_id: 'transaction-id',
+      type: 'DEBIT',
+      reversal_of_item_id: null,
+      amount: '100.00',
+      client_id: 'client-id',
+      client_name: 'Client Name',
+      description: 'Compra',
+      payment_method: 'TO_RECEIVE',
+    };
+    client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [billing] })
+      .mockResolvedValueOnce({ rows: [debitItem] })
+      .mockResolvedValueOnce({ rows: [{ id: 'existing-reversal-id' }] });
+
+    await expect(
+      service.reverseItem({
+        accountId: 'account-id',
+        billingId: 'billing-id',
+        itemId: 'billing-item-id',
+        reason: 'Duplicado',
+        userId: 'user-id',
+        userName: 'User Name',
+        userEmail: 'user@example.com',
+      }),
+    ).rejects.toMatchObject({
+      response: {
+        reversalItemId: 'existing-reversal-id',
+      },
+    });
+    expect(client.query.mock.calls.map(([sql]) => sql)).toContain('ROLLBACK');
+  });
+
+  it('rejects reversal for an item outside the account', async () => {
+    client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [billing] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await expect(
+      service.reverseItem({
+        accountId: 'account-id',
+        billingId: 'billing-id',
+        itemId: 'other-item-id',
+        reason: 'Conta errada',
+        userId: 'user-id',
+        userName: 'User Name',
+        userEmail: 'user@example.com',
+      }),
+    ).rejects.toThrow('Billing item not found');
+    expect(client.query.mock.calls.map(([sql]) => sql)).toContain('ROLLBACK');
+  });
+
+  it('rejects reversal against a paid billing', async () => {
+    client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ ...billing, status: 'PAID' }] });
+
+    await expect(
+      service.reverseItem({
+        accountId: 'account-id',
+        billingId: 'billing-id',
+        itemId: 'billing-item-id',
+        reason: 'Fatura paga',
+        userId: 'user-id',
+        userName: 'User Name',
+        userEmail: 'user@example.com',
+      }),
+    ).rejects.toThrow('Billing is not open or partial');
+    expect(client.query.mock.calls.map(([sql]) => sql)).toContain('ROLLBACK');
+  });
+
+  it('rolls back reversal when the audit log insert fails', async () => {
+    const debitItem = {
+      id: 'billing-item-id',
+      transaction_id: 'transaction-id',
+      type: 'DEBIT',
+      reversal_of_item_id: null,
+      amount: '100.00',
+      client_id: 'client-id',
+      client_name: 'Client Name',
+      description: 'Compra',
+      payment_method: 'TO_RECEIVE',
+    };
+    client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [billing] })
+      .mockResolvedValueOnce({ rows: [debitItem] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [{ debit_total: '100.00', credit_total: '100.00' }],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ ...billing, amount: '0.00', status: 'PAID' }],
+      })
+      .mockRejectedValueOnce(new Error('log failed'));
+
+    await expect(
+      service.reverseItem({
+        accountId: 'account-id',
+        billingId: 'billing-id',
+        itemId: 'billing-item-id',
+        reason: 'Falha no log',
+        userId: 'user-id',
+        userName: 'User Name',
+        userEmail: 'user@example.com',
+      }),
+    ).rejects.toThrow('log failed');
     expect(client.query.mock.calls.map(([sql]) => sql)).toContain('ROLLBACK');
   });
 });

@@ -16,7 +16,10 @@ import { PostgresService } from 'src/postgres/postgres.service';
 import { Product } from 'src/products/entities/product.entity';
 import { ProductTable } from 'src/products/products.service';
 import CreateTransactionDescription from 'src/transactions/domain-service/create-transaction-description.ds';
-import { BillingsTable } from './repository/ports/billint-table.interface';
+import {
+  BillingItemType,
+  BillingsTable,
+} from './repository/ports/billint-table.interface';
 
 export interface ClientAccountInput {
   accountId: string;
@@ -69,10 +72,32 @@ export interface AddBillingSaleInput {
   userEmail: string;
 }
 
+export interface ReverseBillingItemInput {
+  accountId: string;
+  billingId: string;
+  itemId: string;
+  reason: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+}
+
 interface ClientRow {
   id: string;
   account_id: string;
   name: string;
+}
+
+interface ReversibleBillingItemRow {
+  id: string;
+  transaction_id: string;
+  type: BillingItemType;
+  reversal_of_item_id: string | null;
+  amount: string;
+  client_id: string;
+  client_name: string;
+  description: string;
+  payment_method: string;
 }
 
 @Injectable()
@@ -413,6 +438,133 @@ export class BillingLedgerService {
     });
   }
 
+  async reverseItem(input: ReverseBillingItemInput): Promise<BillingsTable> {
+    const reason = input.reason?.trim();
+
+    if (!reason) {
+      throw new BadRequestException('Reversal reason is required');
+    }
+
+    return this.withTransaction(async (client) => {
+      const billing = await this.getBillingForUpdate(
+        input.billingId,
+        input.accountId,
+        client,
+      );
+      this.assertBillingIsMutable(billing);
+      const item = await this.getBillingItemForUpdate(input, client);
+
+      if (item.reversal_of_item_id) {
+        throw new BadRequestException('Reversal items cannot be reversed');
+      }
+
+      const existingReversal = await this.getExistingReversalItemId(
+        item.id,
+        client,
+      );
+
+      if (existingReversal) {
+        throw new ConflictException({
+          message: 'Billing item already reversed.',
+          reversalItemId: existingReversal,
+        });
+      }
+
+      const reversalType = this.getReversalType(item.type);
+      const transactionId = this.generateId();
+      const reversalItemId = this.generateId();
+      const reversedAt = new Date();
+
+      await client.query(
+        `
+          INSERT INTO transactions (
+            id,
+            account_id,
+            client_id,
+            client_name,
+            description,
+            payment_method,
+            amount,
+            quantity
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `,
+        [
+          transactionId,
+          input.accountId,
+          item.client_id,
+          item.client_name,
+          this.truncateDescription(`Estorno: ${item.description}`),
+          item.payment_method,
+          Number(item.amount),
+          1,
+        ],
+      );
+
+      await client.query(
+        `
+          INSERT INTO billing_items (
+            id,
+            billing_id,
+            transaction_id,
+            type,
+            purchased_at,
+            reversal_of_item_id,
+            reversal_reason,
+            reversed_at,
+            reversed_by_user_id,
+            reversed_by_user_name,
+            reversed_by_user_email
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        `,
+        [
+          reversalItemId,
+          billing.id,
+          transactionId,
+          reversalType,
+          reversedAt,
+          item.id,
+          reason,
+          reversedAt,
+          input.userId,
+          input.userName,
+          input.userEmail,
+        ],
+      );
+
+      const updatedBilling = await this.updateBillingProjection(
+        billing.id,
+        input.accountId,
+        client,
+      );
+      await this.insertBillingLog(client, {
+        accountId: input.accountId,
+        userId: input.userId,
+        userName: input.userName,
+        userEmail: input.userEmail,
+        logType: 'billing_item_reversal',
+        data: {
+          billingId: billing.id,
+          itemId: item.id,
+          reversalItemId,
+          transactionId,
+          reason,
+          before: {
+            amount: Number(billing.amount),
+            amountPayed: Number(billing.amount_payed),
+            status: billing.status,
+          },
+          after: {
+            amount: Number(updatedBilling.amount),
+            amountPayed: Number(updatedBilling.amount_payed),
+            status: updatedBilling.status,
+          },
+        },
+      });
+
+      return updatedBilling;
+    });
+  }
+
   async calculateLedgerTotals(
     billingId: string,
     accountId: string,
@@ -430,11 +582,6 @@ export class BillingLedgerService {
         JOIN transactions ON transactions.id = billing_items.transaction_id
         WHERE billing_items.billing_id = $1
           AND transactions.account_id = $2
-          AND NOT EXISTS (
-            SELECT 1
-            FROM billing_items reversals
-            WHERE reversals.reversal_of_item_id = billing_items.id
-          )
       `,
       [billingId, accountId],
     );
@@ -658,6 +805,59 @@ export class BillingLedgerService {
     return new Product(product);
   }
 
+  private async getBillingItemForUpdate(
+    input: Pick<ReverseBillingItemInput, 'accountId' | 'billingId' | 'itemId'>,
+    client: Pick<PoolClient, 'query'>,
+  ): Promise<ReversibleBillingItemRow> {
+    const [item] = await this.queryRows<ReversibleBillingItemRow>(
+      client,
+      `
+        SELECT
+          billing_items.id,
+          billing_items.transaction_id,
+          billing_items.type,
+          billing_items.reversal_of_item_id,
+          transactions.amount,
+          transactions.client_id,
+          transactions.client_name,
+          transactions.description,
+          transactions.payment_method
+        FROM billing_items
+        JOIN transactions ON transactions.id = billing_items.transaction_id
+        WHERE billing_items.id = $1
+          AND billing_items.billing_id = $2
+          AND transactions.account_id = $3
+        FOR UPDATE OF billing_items
+      `,
+      [input.itemId, input.billingId, input.accountId],
+    );
+
+    if (!item) {
+      throw new NotFoundException('Billing item not found');
+    }
+
+    return item;
+  }
+
+  private async getExistingReversalItemId(
+    itemId: string,
+    client: Pick<PoolClient, 'query'>,
+  ): Promise<string | null> {
+    const [reversal] = await this.queryRows<{ id: string }>(
+      client,
+      `
+        SELECT id
+        FROM billing_items
+        WHERE reversal_of_item_id = $1
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [itemId],
+    );
+
+    return reversal?.id || null;
+  }
+
   private async updateBillingProjection(
     billingId: string,
     accountId: string,
@@ -717,6 +917,14 @@ export class BillingLedgerService {
     if (!['OPEN', 'PARTIAL'].includes(billing.status)) {
       throw new BadRequestException('Billing is not open or partial');
     }
+  }
+
+  private getReversalType(type: BillingItemType): BillingItemType {
+    return type === 'DEBIT' ? 'CREDIT' : 'DEBIT';
+  }
+
+  private truncateDescription(description: string) {
+    return description.slice(0, 150);
   }
 
   private getPurchasedAt(value?: string) {
