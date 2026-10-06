@@ -33,14 +33,24 @@ describe('Financial request validation', () => {
     },
   );
   it.each([
-    [null],
-    [{ ...validItem, quantity: 1.5 }],
-    [{ ...validItem, price: 1.234 }],
-  ])('rejects malformed managed-sale items %j with HTTP 400', async (items) => {
-    await expect(transform({ items }, AddBillingSaleDto)).rejects.toMatchObject(
-      { status: 400 },
-    );
-  });
+    { items: [null], error: /nested property items/ },
+    { items: [{ ...validItem, quantity: 1.5 }], error: /items\.0\.quantity/ },
+    { items: [{ ...validItem, price: 1.234 }], error: /items\.0\.price/ },
+  ])(
+    'rejects malformed managed-sale items %j with HTTP 400',
+    async (payload) => {
+      await expect(
+        transform({ items: payload.items }, AddBillingSaleDto),
+      ).rejects.toMatchObject({
+        status: 400,
+        response: {
+          message: expect.arrayContaining([
+            expect.stringMatching(payload.error),
+          ]),
+        },
+      });
+    },
+  );
   it('retains the valid paid-sale contract', async () => {
     expect(
       await transform({ ...sale, paymentMethod: 'PIX' }, CreateSaleDto),

@@ -778,7 +778,13 @@ describe('BillingLedgerService', () => {
                   itemId: 'item',
                   reason: 'Correction',
                 });
-      await expect(result).rejects.toMatchObject({ status: 404 });
+      await expect(result).rejects.toMatchObject({
+        status: 404,
+        message: 'Billing not found',
+      });
+      expect(client.query).toHaveBeenCalledTimes(3);
+      expect(client.query.mock.calls[1][0]).toContain('FROM billings');
+      expect(client.query.mock.calls[2][0]).toBe('ROLLBACK');
       expect(
         client.query.mock.calls.some(([sql]) =>
           /^\s*(INSERT|UPDATE|DELETE)\b/.test(sql),
