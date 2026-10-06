@@ -1,13 +1,15 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 
 import { PostgresService } from 'src/postgres/postgres.service';
 import OutputSaleDto from './dto/output-sale.dto';
 import { TransactionTable } from 'src/transactions/repository/pg-transactions.repository';
 import { QuerySaleDto } from './dto/query-sale.dto';
-import {
-  BillingItemsTable,
-  BillingsTable,
-} from '../billings/repository/ports/billint-table.interface';
+import { BillingItemsTable } from '../billings/repository/ports/billint-table.interface';
 
 const SALES_ORDER_BY_COLUMNS: Record<string, string> = {
   client_name: 'transactions.client_name',
@@ -168,32 +170,8 @@ export class SalesService {
       return;
     }
 
-    Logger.log(`Deleting billing item ${billingItem.id}`);
-    await this.postgresService.query<TransactionTable>(
-      'DELETE FROM billing_items WHERE transaction_id = $1',
-      [id],
+    throw new BadRequestException(
+      'Use o estorno na fatura para corrigir uma venda vinculada.',
     );
-    await this.postgresService.query<TransactionTable>(
-      'DELETE FROM transactions WHERE id = $1',
-      [id],
-    );
-
-    const billingId = billingItem.billing_id;
-    const transactions = await this.postgresService.query<TransactionTable>(
-      `SELECT t.* FROM transactions t 
-      JOIN  billing_items b ON t.id = b.transaction_id
-      WHERE b.billing_id = $1`,
-      [billingId],
-    );
-    const billingTotal = transactions.reduce((acc, transaction) => {
-      acc += Number(transaction.amount);
-      return acc;
-    }, 0);
-
-    await this.postgresService.query<BillingsTable>(
-      `UPDATE billings SET amount = $1 WHERE id = $2`,
-      [billingTotal, billingId],
-    );
-    Logger.log(`Updated billing ${billingId} with new total ${billingTotal}`);
   }
 }
