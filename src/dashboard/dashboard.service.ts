@@ -101,6 +101,7 @@ export class DashboardService {
           FROM billings
           WHERE billings.account_id = $1
             AND COALESCE(billings.amount, 0) > 0
+            AND billings.payed_at IS NULL
             AND EXISTS (
               SELECT 1
               FROM billing_items
@@ -118,6 +119,7 @@ export class DashboardService {
           FROM billings
           WHERE account_id = $1
             AND COALESCE(amount, 0) > 0
+            AND payed_at IS NULL
         `,
         [accountId],
       ),
