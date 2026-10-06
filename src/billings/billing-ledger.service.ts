@@ -369,11 +369,14 @@ export class BillingLedgerService {
   async addSale(
     input: AddBillingSaleInput,
   ): Promise<BillingsTable & { saleTransactionId: string }> {
-    if (!input.items?.length) {
+    if (!Array.isArray(input.items) || !input.items.length) {
       throw new BadRequestException('Sale must have at least one item');
     }
 
     input.items.forEach((item) => {
+      if (!item || typeof item !== 'object' || !item.productId) {
+        throw new BadRequestException('Sale item product is required');
+      }
       if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
         throw new BadRequestException(
           'Sale item quantity must be greater than zero',

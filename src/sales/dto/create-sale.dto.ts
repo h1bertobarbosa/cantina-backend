@@ -1,8 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   IsDateString,
   IsNotEmpty,
   IsNumber,
+  IsArray,
+  ArrayMinSize,
+  ValidateNested,
+  IsInt,
+  Min,
   IsOptional,
   IsString,
 } from 'class-validator';
@@ -13,16 +19,22 @@ class Item {
   @IsNotEmpty()
   productId: string;
   @ApiProperty()
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
   price: number;
   @ApiProperty()
-  @IsNumber()
+  @IsInt()
+  @Min(1)
   quantity: number;
 }
 
 export class CreateSaleDto {
   @ApiProperty({ type: [Item] })
   @IsNotEmpty()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => Item)
   items: Item[];
   @ApiProperty()
   @IsString()
