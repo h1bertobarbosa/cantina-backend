@@ -6,10 +6,16 @@ import { LibsModule } from 'src/libs/libs.module';
 import PayBillingFacade from './facades/billing.facade';
 import PayBillingService from './pay-billing.service';
 import { LoggerModule } from '../logger/logger.module';
+import { BillingLedgerService } from './billing-ledger.service';
 
 @Module({
   imports: [TransactionsModule, LibsModule, LoggerModule],
   controllers: [BillingsController],
-  providers: [BillingsService, PayBillingFacade, PayBillingService],
+  providers: [
+    BillingsService,
+    PayBillingFacade,
+    PayBillingService,
+    BillingLedgerService,
+  ],
 })
 export class BillingsModule {}
