@@ -153,6 +153,37 @@ describe('BillingsService', () => {
     expect(pg.query).toHaveBeenCalledTimes(1);
   });
 
+  it('exposes overpayment credit separately from the zero open balance', async () => {
+    const pg = {
+      query: jest
+        .fn()
+        .mockResolvedValueOnce([
+          {
+            id: 'billing',
+            account_id: 'account',
+            amount: '0.00',
+            amount_payed: '150.00',
+            status: 'CREDIT_BALANCE',
+          },
+        ])
+        .mockResolvedValueOnce([
+          { id: 'debit', type: 'DEBIT', amount: '100.00' },
+          { id: 'credit', type: 'CREDIT', amount: '150.00' },
+        ]),
+    };
+    const result = await new BillingsService(
+      pg as never,
+      guidProvider as never,
+      logger,
+    ).getLedger({ id: 'billing', accountId: 'account' });
+    expect(result).toMatchObject({
+      openAmount: 0,
+      ledgerTotal: -50,
+      creditBalance: 50,
+      billing: { status: 'CREDIT_BALANCE' },
+    });
+  });
+
   it.each([
     ['open', 'OPEN'],
     ['partial', 'PARTIAL'],

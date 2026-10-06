@@ -652,6 +652,26 @@ describe('BillingLedgerService', () => {
     });
 
     expect(result.amount).toBe('120.00');
+    const saleLog = client.query.mock.calls.find(([sql]) =>
+      sql.includes('INSERT INTO logs'),
+    );
+    expect(saleLog[1].slice(1, 5)).toEqual([
+      'account-id',
+      'user-id',
+      'User Name',
+      'user@example.com',
+    ]);
+    expect(saleLog[1][6]).toBe('billing_sale');
+    expect(JSON.parse(saleLog[1][5])).toEqual({
+      billingId: 'billing-id',
+      transactionIds: ['transaction-id'],
+      billingItemIds: ['billing-item-id'],
+      before: { amount: 100, amountPayed: 0, status: 'OPEN' },
+      after: { amount: 120, amountPayed: 0, status: 'OPEN' },
+    });
+    expect(
+      client.query.mock.calls.find(([sql]) => sql.includes('FROM billings'))[0],
+    ).toContain('FOR UPDATE');
     expect(client.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO transactions'),
       [
@@ -724,6 +744,205 @@ describe('BillingLedgerService', () => {
         'OPEN',
       ],
     );
+  });
+
+  it.each(['debit', 'credit', 'sale', 'reversal'])(
+    'rejects a foreign account billing for %s without writes',
+    async (operation) => {
+      client.query.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({
+        rows: [{ ...billing, account_id: 'other-account' }],
+      });
+      const identity = {
+        accountId: 'account-id',
+        billingId: 'billing-id',
+        userId: 'user-id',
+        userName: 'User Name',
+        userEmail: 'user@example.com',
+      };
+      const result =
+        operation === 'debit'
+          ? service.addDebit({ ...identity, amount: 10, description: 'Charge' })
+          : operation === 'credit'
+            ? service.addCredit({
+                ...identity,
+                amount: 10,
+                paymentMethod: 'PIX',
+              })
+            : operation === 'sale'
+              ? service.addSale({
+                  ...identity,
+                  items: [{ productId: 'product-id', quantity: 1, price: 10 }],
+                })
+              : service.reverseItem({
+                  ...identity,
+                  itemId: 'item',
+                  reason: 'Correction',
+                });
+      await expect(result).rejects.toMatchObject({ status: 404 });
+      expect(
+        client.query.mock.calls.some(([sql]) =>
+          /^\s*(INSERT|UPDATE|DELETE)\b/.test(sql),
+        ),
+      ).toBe(false);
+      expect(client.query.mock.calls.map(([sql]) => sql)).toContain('ROLLBACK');
+    },
+  );
+
+  it('rejects debit against a paid billing with HTTP 400 without writes', async () => {
+    client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ ...billing, status: 'PAID' }] })
+      .mockResolvedValueOnce({ rows: [aClient] });
+    await expect(
+      service.addDebit({
+        accountId: 'account-id',
+        billingId: 'billing-id',
+        amount: 10,
+        description: 'Charge',
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(
+      client.query.mock.calls.some(([sql]) =>
+        /^\s*(INSERT|UPDATE|DELETE)\b/.test(sql),
+      ),
+    ).toBe(false);
+  });
+
+  it.each([1.5, 0])(
+    'rejects invalid sale quantity %s before a transaction',
+    async (quantity) => {
+      await expect(
+        service.addSale({
+          accountId: 'account-id',
+          billingId: 'billing-id',
+          userId: 'user',
+          userName: 'Operator',
+          userEmail: 'operator@test.local',
+          items: [{ productId: 'product-id', quantity, price: 10 }],
+        }),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(postgresService.getClient).not.toHaveBeenCalled();
+    },
+  );
+
+  it('creates a billing with an initial debit and audits its user', async () => {
+    client.query.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM clients')) return { rows: [aClient] };
+      if (sql.includes('FROM billings')) return { rows: [] };
+      if (sql.includes('INSERT INTO billings'))
+        return { rows: [{ ...billing, amount: '0.00' }] };
+      if (sql.includes('AS debit_total'))
+        return { rows: [{ debit_total: '25', credit_total: '0' }] };
+      if (sql.includes('UPDATE billings'))
+        return { rows: [{ ...billing, amount: '25.00' }] };
+      return { rows: [] };
+    });
+    const result = await service.createBilling({
+      accountId: 'account-id',
+      clientId: 'client-id',
+      description: 'Opening',
+      amount: 25,
+      userId: 'user-id',
+      userName: 'User Name',
+      userEmail: 'user@example.com',
+    });
+    expect(result).toMatchObject({ amount: '25.00', status: 'OPEN' });
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO transactions'),
+      [
+        'transaction-id',
+        'account-id',
+        'client-id',
+        'Client Name',
+        'Opening',
+        'TO_RECEIVE',
+        25,
+        1,
+      ],
+    );
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO billing_items'),
+      [
+        'billing-item-id',
+        'billing-id',
+        'transaction-id',
+        'DEBIT',
+        expect.any(Date),
+      ],
+    );
+    const logs = client.query.mock.calls.filter(([sql]) =>
+      sql.includes('INSERT INTO logs'),
+    );
+    expect(logs.map(([, params]) => params[6])).toEqual([
+      'billing_debit',
+      'billing_created',
+    ]);
+    expect(
+      logs.every(
+        ([, params]) =>
+          params[2] === 'user-id' &&
+          params[3] === 'User Name' &&
+          params[4] === 'user@example.com',
+      ),
+    ).toBe(true);
+  });
+
+  it('rolls back a sale when audit insertion fails', async () => {
+    client.query.mockImplementation(async (sql: string) => {
+      if (sql.includes('INSERT INTO logs'))
+        throw new Error('sale audit failed');
+      if (sql.includes('FROM billings') || sql.includes('UPDATE billings'))
+        return { rows: [billing] };
+      if (sql.includes('FROM clients')) return { rows: [aClient] };
+      if (sql.includes('FROM products')) return { rows: [product] };
+      if (sql.includes('AS debit_total'))
+        return { rows: [{ debit_total: '120', credit_total: '0' }] };
+      return { rows: [] };
+    });
+    await expect(
+      service.addSale({
+        accountId: 'account-id',
+        billingId: 'billing-id',
+        userId: 'user-id',
+        userName: 'User Name',
+        userEmail: 'user@example.com',
+        items: [{ productId: 'product-id', price: 10, quantity: 2 }],
+      }),
+    ).rejects.toThrow('sale audit failed');
+    expect(client.query.mock.calls.map(([sql]) => sql)).toContain('ROLLBACK');
+    expect(client.query.mock.calls.map(([sql]) => sql)).not.toContain('COMMIT');
+    expect(client.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('locks the credit target before any financial insert', async () => {
+    client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [billing] })
+      .mockResolvedValueOnce({ rows: [aClient] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [{ debit_total: '100', credit_total: '10' }],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ ...billing, amount: '90', status: 'PARTIAL' }],
+      });
+    await service.addCredit({
+      accountId: 'account-id',
+      billingId: 'billing-id',
+      amount: 10,
+      paymentMethod: 'PIX',
+      userId: 'user-id',
+      userName: 'User Name',
+      userEmail: 'user@example.com',
+    });
+    expect(client.query.mock.calls[1][0]).toContain('FOR UPDATE');
+    expect(client.query.mock.calls[1][1]).toEqual(['billing-id']);
+    expect(
+      client.query.mock.calls.findIndex(([sql]) =>
+        sql.includes('INSERT INTO transactions'),
+      ),
+    ).toBeGreaterThan(1);
   });
 
   it('rejects sale against a paid billing', async () => {
@@ -953,6 +1172,24 @@ describe('BillingLedgerService', () => {
       userName: 'User Name',
       userEmail: 'user@example.com',
     });
+
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO transactions'),
+      [
+        'reversal-transaction-id',
+        'account-id',
+        'client-id',
+        'Client Name',
+        'Estorno: Pagamento',
+        'PIX',
+        40,
+        1,
+      ],
+    );
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE billings'),
+      [100, 0, 'OPEN', null, expect.any(Date), 'billing-id', 'account-id'],
+    );
 
     expect(client.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO billing_items'),

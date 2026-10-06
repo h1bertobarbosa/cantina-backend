@@ -64,4 +64,16 @@ describe('DashboardService', () => {
       '2026-07-22 23:59:59',
     ]);
   });
+
+  it('excludes both sides of reversal pairs in every period financial query', async () => {
+    mockSummaryQueries();
+    await service.getSummary({ accountId: 'account-1' });
+    for (const index of [0, 2, 3, 4]) {
+      const sql = postgresService.query.mock.calls[index][0];
+      expect(sql).toContain('billing_items.reversal_of_item_id IS NULL');
+      expect(sql).toContain(
+        'NOT EXISTS (SELECT 1 FROM billing_items reversals WHERE reversals.reversal_of_item_id = billing_items.id)',
+      );
+    }
+  });
 });
