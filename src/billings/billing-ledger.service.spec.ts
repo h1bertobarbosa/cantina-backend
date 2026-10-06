@@ -20,6 +20,14 @@ describe('BillingLedgerService', () => {
     account_id: 'account-id',
     name: 'Client Name',
   };
+  const product = {
+    id: 'product-id',
+    account_id: 'account-id',
+    name: 'Acai',
+    price: 10,
+    created_at: new Date('2026-01-01T00:00:00.000Z'),
+    updated_at: new Date('2026-01-01T00:00:00.000Z'),
+  };
 
   let postgresService: { getClient: jest.Mock };
   let client: { query: jest.Mock; release: jest.Mock };
@@ -506,6 +514,201 @@ describe('BillingLedgerService', () => {
         userEmail: 'user@example.com',
       }),
     ).rejects.toThrow('log failed');
+    expect(client.query.mock.calls.map(([sql]) => sql)).toContain('ROLLBACK');
+  });
+
+  it('adds a sale to an active billing with receivable transactions', async () => {
+    guidProvider.generate
+      .mockReset()
+      .mockReturnValueOnce('transaction-id')
+      .mockReturnValueOnce('billing-item-id')
+      .mockReturnValueOnce('log-id')
+      .mockReturnValue('generated-id');
+    client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [billing] })
+      .mockResolvedValueOnce({ rows: [aClient] })
+      .mockResolvedValueOnce({ rows: [product] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [{ debit_total: '120.00', credit_total: '0.00' }],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ ...billing, amount: '120.00', status: 'OPEN' }],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const result = await service.addSale({
+      accountId: 'account-id',
+      billingId: 'billing-id',
+      items: [{ productId: 'product-id', price: 10, quantity: 2 }],
+      buyDate: '2026-10-06',
+      userId: 'user-id',
+      userName: 'User Name',
+      userEmail: 'user@example.com',
+    });
+
+    expect(result.amount).toBe('120.00');
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO transactions'),
+      [
+        'transaction-id',
+        'account-id',
+        'client-id',
+        'product-id',
+        'Client Name',
+        '2 x R$ 10 - Acai',
+        'TO_RECEIVE',
+        20,
+        2,
+      ],
+    );
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO billing_items'),
+      [
+        'billing-item-id',
+        'billing-id',
+        'transaction-id',
+        'DEBIT',
+        new Date('2026-10-06T12:00:00.000Z'),
+      ],
+    );
+  });
+
+  it('creates an active billing in the same transaction when sale client has none', async () => {
+    guidProvider.generate
+      .mockReset()
+      .mockReturnValueOnce('billing-id')
+      .mockReturnValueOnce('transaction-id')
+      .mockReturnValueOnce('billing-item-id')
+      .mockReturnValueOnce('log-id')
+      .mockReturnValue('generated-id');
+    client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [aClient] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [billing] })
+      .mockResolvedValueOnce({ rows: [product] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [{ debit_total: '20.00', credit_total: '0.00' }],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ ...billing, amount: '20.00', status: 'OPEN' }],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await service.addSale({
+      accountId: 'account-id',
+      clientId: 'client-id',
+      items: [{ productId: 'product-id', price: 10, quantity: 2 }],
+      userId: 'user-id',
+      userName: 'User Name',
+      userEmail: 'user@example.com',
+    });
+
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO billings'),
+      [
+        'billing-id',
+        'account-id',
+        'client-id',
+        'TO_RECEIVE',
+        expect.stringContaining('Fatura mes:'),
+        0,
+        0,
+        'OPEN',
+      ],
+    );
+  });
+
+  it('rejects sale against a paid billing', async () => {
+    client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ ...billing, status: 'PAID' }] })
+      .mockResolvedValueOnce({ rows: [aClient] });
+
+    await expect(
+      service.addSale({
+        accountId: 'account-id',
+        billingId: 'billing-id',
+        items: [{ productId: 'product-id', price: 10, quantity: 2 }],
+        userId: 'user-id',
+        userName: 'User Name',
+        userEmail: 'user@example.com',
+      }),
+    ).rejects.toThrow('Billing is not open or partial');
+    expect(client.query.mock.calls.map(([sql]) => sql)).toContain('ROLLBACK');
+  });
+
+  it('rejects sale when the product belongs to another account', async () => {
+    client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [billing] })
+      .mockResolvedValueOnce({ rows: [aClient] })
+      .mockResolvedValueOnce({
+        rows: [{ ...product, account_id: 'other-account-id' }],
+      });
+
+    await expect(
+      service.addSale({
+        accountId: 'account-id',
+        billingId: 'billing-id',
+        items: [{ productId: 'product-id', price: 10, quantity: 2 }],
+        userId: 'user-id',
+        userName: 'User Name',
+        userEmail: 'user@example.com',
+      }),
+    ).rejects.toThrow('Product not found');
+    expect(client.query.mock.calls.map(([sql]) => sql)).toContain('ROLLBACK');
+  });
+
+  it('rejects sale items with invalid quantity or price before opening a transaction', async () => {
+    await expect(
+      service.addSale({
+        accountId: 'account-id',
+        billingId: 'billing-id',
+        items: [{ productId: 'product-id', price: 10, quantity: 0 }],
+        userId: 'user-id',
+        userName: 'User Name',
+        userEmail: 'user@example.com',
+      }),
+    ).rejects.toThrow('Sale item quantity must be greater than zero');
+
+    await expect(
+      service.addSale({
+        accountId: 'account-id',
+        billingId: 'billing-id',
+        items: [{ productId: 'product-id', price: 0, quantity: 1 }],
+        userId: 'user-id',
+        userName: 'User Name',
+        userEmail: 'user@example.com',
+      }),
+    ).rejects.toThrow('Sale item price must be greater than zero');
+    expect(postgresService.getClient).not.toHaveBeenCalled();
+  });
+
+  it('rolls back sale when billing item insert fails', async () => {
+    client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [billing] })
+      .mockResolvedValueOnce({ rows: [aClient] })
+      .mockResolvedValueOnce({ rows: [product] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockRejectedValueOnce(new Error('item insert failed'));
+
+    await expect(
+      service.addSale({
+        accountId: 'account-id',
+        billingId: 'billing-id',
+        items: [{ productId: 'product-id', price: 10, quantity: 2 }],
+        userId: 'user-id',
+        userName: 'User Name',
+        userEmail: 'user@example.com',
+      }),
+    ).rejects.toThrow('item insert failed');
     expect(client.query.mock.calls.map(([sql]) => sql)).toContain('ROLLBACK');
   });
 });

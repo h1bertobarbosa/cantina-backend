@@ -13,6 +13,9 @@ import {
 } from 'src/libs/src/guid/contract/guid-provider.interface';
 import { LOGGER } from 'src/logger/logger.const';
 import { PostgresService } from 'src/postgres/postgres.service';
+import { Product } from 'src/products/entities/product.entity';
+import { ProductTable } from 'src/products/products.service';
+import CreateTransactionDescription from 'src/transactions/domain-service/create-transaction-description.ds';
 import { BillingsTable } from './repository/ports/billint-table.interface';
 
 export interface ClientAccountInput {
@@ -46,6 +49,21 @@ export interface AddBillingCreditInput {
   amount: number;
   paymentMethod: string;
   description?: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+}
+
+export interface AddBillingSaleInput {
+  accountId: string;
+  billingId?: string;
+  clientId?: string;
+  items: Array<{
+    productId: string;
+    price: number;
+    quantity: number;
+  }>;
+  buyDate?: string;
   userId: string;
   userName: string;
   userEmail: string;
@@ -282,6 +300,119 @@ export class BillingLedgerService {
     });
   }
 
+  async addSale(input: AddBillingSaleInput): Promise<BillingsTable> {
+    if (!input.items?.length) {
+      throw new BadRequestException('Sale must have at least one item');
+    }
+
+    input.items.forEach((item) => {
+      if (!item.quantity || Number(item.quantity) <= 0) {
+        throw new BadRequestException('Sale item quantity must be greater than zero');
+      }
+
+      if (!item.price || Number(item.price) <= 0) {
+        throw new BadRequestException('Sale item price must be greater than zero');
+      }
+    });
+
+    return this.withTransaction(async (client) => {
+      const { billing, clientName } = await this.resolveSaleBilling(
+        input,
+        client,
+      );
+      this.assertBillingIsMutable(billing);
+      const transactionIds: string[] = [];
+
+      for (const item of input.items) {
+        const product = await this.getProduct(
+          item.productId,
+          input.accountId,
+          client,
+        );
+        const quantity = Number(item.quantity);
+        const price = Number(item.price);
+        product.setPrice(price);
+        const transactionId = this.generateId();
+        transactionIds.push(transactionId);
+
+        await client.query(
+          `
+            INSERT INTO transactions (
+              id,
+              account_id,
+              client_id,
+              product_id,
+              client_name,
+              description,
+              payment_method,
+              amount,
+              quantity
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          `,
+          [
+            transactionId,
+            input.accountId,
+            billing.client_id,
+            product.getId(),
+            clientName,
+            CreateTransactionDescription.execute(product, quantity),
+            'TO_RECEIVE',
+            price * quantity,
+            quantity,
+          ],
+        );
+
+        await client.query(
+          `
+            INSERT INTO billing_items (
+              id,
+              billing_id,
+              transaction_id,
+              type,
+              purchased_at
+            ) VALUES ($1, $2, $3, $4, $5)
+          `,
+          [
+            this.generateId(),
+            billing.id,
+            transactionId,
+            'DEBIT',
+            this.getPurchasedAt(input.buyDate),
+          ],
+        );
+      }
+
+      const updatedBilling = await this.updateBillingProjection(
+        billing.id,
+        input.accountId,
+        client,
+      );
+      await this.insertBillingLog(client, {
+        accountId: input.accountId,
+        userId: input.userId,
+        userName: input.userName,
+        userEmail: input.userEmail,
+        logType: 'billing_sale',
+        data: {
+          billingId: billing.id,
+          transactionIds,
+          before: {
+            amount: Number(billing.amount),
+            amountPayed: Number(billing.amount_payed),
+            status: billing.status,
+          },
+          after: {
+            amount: Number(updatedBilling.amount),
+            amountPayed: Number(updatedBilling.amount_payed),
+            status: updatedBilling.status,
+          },
+        },
+      });
+
+      return updatedBilling;
+    });
+  }
+
   async calculateLedgerTotals(
     billingId: string,
     accountId: string,
@@ -381,6 +512,85 @@ export class BillingLedgerService {
     return this.updateBillingProjection(billing.id, input.accountId, client);
   }
 
+  private async resolveSaleBilling(
+    input: AddBillingSaleInput,
+    client: PoolClient,
+  ): Promise<{ billing: BillingsTable; clientName: string }> {
+    if (input.billingId) {
+      const billing = await this.getBillingForUpdate(
+        input.billingId,
+        input.accountId,
+        client,
+      );
+      const aClient = await this.getClient(
+        billing.client_id,
+        input.accountId,
+        client,
+      );
+
+      return { billing, clientName: aClient.name };
+    }
+
+    if (!input.clientId) {
+      throw new BadRequestException('Client is required for sale billing');
+    }
+
+    const aClient = await this.getClient(input.clientId, input.accountId, client);
+    const activeBilling = await this.getActiveBilling(
+      { accountId: input.accountId, clientId: input.clientId },
+      client,
+    );
+
+    if (activeBilling) {
+      return { billing: activeBilling, clientName: aClient.name };
+    }
+
+    const billing = await this.createEmptyBilling(
+      {
+        accountId: input.accountId,
+        clientId: input.clientId,
+        description: `Fatura mes: ${new Date().getMonth()}/${new Date().getFullYear()}`,
+      },
+      client,
+    );
+
+    return { billing, clientName: aClient.name };
+  }
+
+  private async createEmptyBilling(
+    input: ClientAccountInput & { description: string },
+    client: Pick<PoolClient, 'query'>,
+  ): Promise<BillingsTable> {
+    const [billing] = await this.queryRows<BillingsTable>(
+      client,
+      `
+        INSERT INTO billings (
+          id,
+          account_id,
+          client_id,
+          payment_method,
+          description,
+          amount,
+          amount_payed,
+          status
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING *
+      `,
+      [
+        this.generateId(),
+        input.accountId,
+        input.clientId,
+        'TO_RECEIVE',
+        input.description,
+        0,
+        0,
+        'OPEN',
+      ],
+    );
+
+    return billing;
+  }
+
   private async getBillingForUpdate(
     billingId: string,
     accountId: string,
@@ -424,6 +634,28 @@ export class BillingLedgerService {
     }
 
     return aClient;
+  }
+
+  private async getProduct(
+    productId: string,
+    accountId: string,
+    client: Pick<PoolClient, 'query'>,
+  ): Promise<Product> {
+    const [product] = await this.queryRows<ProductTable>(
+      client,
+      `
+        SELECT *
+        FROM products
+        WHERE id = $1
+      `,
+      [productId],
+    );
+
+    if (!product || product.account_id !== accountId) {
+      throw new NotFoundException('Product not found');
+    }
+
+    return new Product(product);
   }
 
   private async updateBillingProjection(
