@@ -37,10 +37,10 @@ describe('DashboardService', () => {
       productsCount: 26,
     });
     expect(postgresService.query.mock.calls[0][0]).toContain(
-      'AND billings.payed_at IS NULL',
+      "AND billings.status IN ('OPEN', 'PARTIAL')",
     );
     expect(postgresService.query.mock.calls[1][0]).toContain(
-      'AND payed_at IS NULL',
+      "AND status IN ('OPEN', 'PARTIAL')",
     );
   });
 

@@ -92,12 +92,10 @@ describe('NewSaleService', () => {
     };
 
     ledger = {
-      addSale: jest
-        .fn()
-        .mockResolvedValue({
-          id: 'billing-id',
-          saleTransactionId: 'transaction-id',
-        }),
+      addSale: jest.fn().mockResolvedValue({
+        id: 'billing-id',
+        saleTransactionId: 'transaction-id',
+      }),
     };
     service = new NewSaleService(
       postgresService as never,
