@@ -74,6 +74,183 @@ describe('BillingLedgerService', () => {
     expect(client.release).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    {
+      operation: 'sale',
+      amount: 20,
+      debit: 20,
+      credit: 36,
+      status: 'CREDIT_BALANCE',
+      open: 0,
+    },
+    {
+      operation: 'sale',
+      amount: 36,
+      debit: 36,
+      credit: 36,
+      status: 'PAID',
+      open: 0,
+    },
+    {
+      operation: 'sale',
+      amount: 50,
+      debit: 50,
+      credit: 36,
+      status: 'PARTIAL',
+      open: 14,
+    },
+    {
+      operation: 'debit',
+      amount: 50,
+      debit: 50,
+      credit: 36,
+      status: 'PARTIAL',
+      open: 14,
+    },
+    {
+      operation: 'credit',
+      amount: 10,
+      debit: 0,
+      credit: 46,
+      status: 'CREDIT_BALANCE',
+      open: 0,
+    },
+    {
+      operation: 'reversal',
+      amount: 36,
+      debit: 0,
+      credit: 0,
+      status: 'OPEN',
+      open: 0,
+    },
+  ])(
+    'manages a credit-balance invoice with $operation $amount -> $status',
+    async (testCase) => {
+      const creditBilling = {
+        ...billing,
+        amount: '0.00',
+        amount_payed: '36.00',
+        status: 'CREDIT_BALANCE',
+      };
+      const projected = {
+        ...creditBilling,
+        amount: String(testCase.open),
+        amount_payed: String(testCase.credit),
+        status: testCase.status,
+      };
+      client.query.mockImplementation(async (sql) => {
+        if (sql.includes('AS debit_total'))
+          return {
+            rows: [
+              {
+                debit_total: String(testCase.debit),
+                credit_total: String(testCase.credit),
+              },
+            ],
+          };
+        if (sql.includes('FROM billings')) return { rows: [creditBilling] };
+        if (sql.includes('FROM clients')) return { rows: [aClient] };
+        if (sql.includes('FROM products')) return { rows: [product] };
+        if (sql.includes('FOR UPDATE OF billing_items'))
+          return {
+            rows: [
+              {
+                id: 'credit-item',
+                transaction_id: 'credit-transaction',
+                type: 'CREDIT',
+                reversal_of_item_id: null,
+                amount: '36.00',
+                client_id: 'client-id',
+                client_name: 'Client Name',
+                description: 'Credito',
+                payment_method: 'PIX',
+              },
+            ],
+          };
+        if (sql.includes('UPDATE billings')) return { rows: [projected] };
+        return { rows: [] };
+      });
+      const identity = {
+        accountId: 'account-id',
+        billingId: 'billing-id',
+        userId: 'user-id',
+        userName: 'User Name',
+        userEmail: 'user@example.com',
+      };
+      const result =
+        testCase.operation === 'sale'
+          ? await service.addSale({
+              ...identity,
+              items: [
+                {
+                  productId: 'product-id',
+                  quantity: 1,
+                  price: testCase.amount,
+                },
+              ],
+            })
+          : testCase.operation === 'debit'
+            ? await service.addDebit({
+                ...identity,
+                amount: testCase.amount,
+                description: 'Charge',
+              })
+            : testCase.operation === 'credit'
+              ? await service.addCredit({
+                  ...identity,
+                  amount: testCase.amount,
+                  paymentMethod: 'PIX',
+                })
+              : await service.reverseItem({
+                  ...identity,
+                  itemId: 'credit-item',
+                  reason: 'Correction',
+                });
+      expect(result.status).toBe(testCase.status);
+      expect(client.query).toHaveBeenCalledWith(
+        expect.stringContaining('UPDATE billings'),
+        [
+          testCase.open,
+          testCase.credit,
+          testCase.status,
+          ['PAID', 'CREDIT_BALANCE'].includes(testCase.status)
+            ? expect.any(Date)
+            : null,
+          expect.any(Date),
+          'billing-id',
+          'account-id',
+        ],
+      );
+      expect(
+        client.query.mock.calls.some(([sql]) =>
+          sql.includes('INSERT INTO logs'),
+        ),
+      ).toBe(true);
+      expect(client.query.mock.calls.map(([sql]) => sql)).toContain('COMMIT');
+      expect(client.query.mock.calls.map(([sql]) => sql)).not.toContain(
+        'ROLLBACK',
+      );
+    },
+  );
+
+  it('rolls back reactivation conflicts and returns HTTP 409', async () => {
+    client.query.mockResolvedValueOnce({ rows: [] }).mockRejectedValueOnce({
+      code: '23505',
+      constraint: 'billings_one_active_per_client_idx',
+    });
+    await expect(
+      service.withTransaction(async (connection) => {
+        await connection.query('UPDATE billings SET status = $1', ['PARTIAL']);
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringContaining('outra fatura aberta ou parcial'),
+    });
+    expect(client.query.mock.calls.map(([sql]) => sql)).toContain('ROLLBACK');
+    expect(client.query.mock.calls.map(([sql]) => sql)).not.toContain('COMMIT');
+    expect(client.release).toHaveBeenCalledTimes(1);
+  });
+
   it('rolls back and releases the client when the transaction fails', async () => {
     await expect(
       service.withTransaction(async () => {

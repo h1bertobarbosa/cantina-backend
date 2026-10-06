@@ -126,6 +126,14 @@ export class BillingLedgerService {
       return result;
     } catch (error) {
       await client.query('ROLLBACK');
+      if (
+        error?.code === '23505' &&
+        error.constraint === 'billings_one_active_per_client_idx'
+      ) {
+        throw new ConflictException(
+          'O cliente ja possui outra fatura aberta ou parcial. Use a fatura ativa para novos lancamentos.',
+        );
+      }
       throw error;
     } finally {
       client.release();
@@ -1013,7 +1021,7 @@ export class BillingLedgerService {
   }
 
   private assertBillingIsMutable(billing: BillingsTable) {
-    if (!['OPEN', 'PARTIAL'].includes(billing.status)) {
+    if (!['OPEN', 'PARTIAL', 'CREDIT_BALANCE'].includes(billing.status)) {
       throw new BadRequestException('Billing is not open or partial');
     }
   }
