@@ -934,6 +934,7 @@ describe('BillingLedgerService', () => {
     expect(saleBillingLookup[0]).toContain(
       "WHEN status = 'CREDIT_BALANCE' THEN 0",
     );
+    expect(saleBillingLookup[0]).toContain('FOR UPDATE');
     expect(client.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO billing_items'),
       [
@@ -945,7 +946,9 @@ describe('BillingLedgerService', () => {
       ],
     );
     expect(
-      client.query.mock.calls.some(([sql]) => sql.includes('INSERT INTO billings')),
+      client.query.mock.calls.some(([sql]) =>
+        sql.includes('INSERT INTO billings'),
+      ),
     ).toBe(false);
     expect(client.query).toHaveBeenCalledWith(
       expect.stringContaining('UPDATE billings'),
