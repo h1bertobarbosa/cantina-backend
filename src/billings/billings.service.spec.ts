@@ -11,6 +11,107 @@ describe('BillingsService', () => {
     generate: jest.fn(),
   };
 
+  it('deletes a billing and its ledger in foreign-key order inside one transaction', async () => {
+    const client = {
+      query: jest
+        .fn()
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({
+          rows: [{ id: 'billing', account_id: 'account' }],
+        })
+        .mockResolvedValueOnce({
+          rows: [{ id: 'transaction', amount: '10.00' }],
+        })
+        .mockResolvedValue({ rows: [] }),
+      release: jest.fn(),
+    };
+    const pg = { getClient: jest.fn().mockResolvedValue(client) };
+    const service = new BillingsService(
+      pg as never,
+      { generate: jest.fn().mockReturnValue('log-id') } as never,
+      logger,
+    );
+
+    await service.deleteBilling({
+      id: 'billing',
+      accountId: 'account',
+      userId: 'user',
+      userName: 'Operator',
+      userEmail: 'operator@test.local',
+      obs: 'Fatura duplicada',
+    });
+
+    expect(client.query.mock.calls.map(([sql]) => sql.trim())).toEqual([
+      'BEGIN',
+      expect.stringContaining('SELECT * FROM billings'),
+      expect.stringContaining('SELECT t.id'),
+      expect.stringContaining('DELETE FROM billing_items'),
+      expect.stringContaining('DELETE FROM billing_items'),
+      expect.stringContaining('DELETE FROM transactions'),
+      expect.stringContaining('DELETE FROM billings'),
+      expect.stringContaining('INSERT INTO logs'),
+      'COMMIT',
+    ]);
+    expect(client.query.mock.calls[1][0]).toContain('FOR UPDATE');
+    expect(client.query.mock.calls[3][0]).toContain(
+      'reversal_of_item_id IS NOT NULL',
+    );
+    expect(client.query.mock.calls[5][0]).toContain('NOT EXISTS');
+    expect(client.query.mock.calls[6][1]).toEqual(['billing', 'account']);
+    expect(client.query.mock.calls[7][1]).toEqual([
+      'log-id',
+      'account',
+      'user',
+      'Operator',
+      'operator@test.local',
+      JSON.stringify([{ id: 'transaction', amount: '10.00' }]),
+      'delete_billing',
+      'Fatura duplicada',
+    ]);
+    expect(client.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('rolls back billing deletion when a dependent delete fails', async () => {
+    const dependencyError = Object.assign(new Error('foreign key'), {
+      code: '23503',
+    });
+    const client = {
+      query: jest
+        .fn()
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({
+          rows: [{ id: 'billing', account_id: 'account' }],
+        })
+        .mockResolvedValueOnce({ rows: [{ id: 'transaction' }] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockRejectedValueOnce(dependencyError)
+        .mockResolvedValueOnce({ rows: [] }),
+      release: jest.fn(),
+    };
+    const service = new BillingsService(
+      { getClient: jest.fn().mockResolvedValue(client) } as never,
+      guidProvider as never,
+      logger,
+    );
+
+    await expect(
+      service.deleteBilling({
+        id: 'billing',
+        accountId: 'account',
+        userId: 'user',
+        userName: 'Operator',
+        userEmail: 'operator@test.local',
+        obs: 'Fatura duplicada',
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      message: 'A fatura possui registros vinculados e nao pode ser excluida.',
+    });
+    expect(client.query.mock.calls.map(([sql]) => sql)).toContain('ROLLBACK');
+    expect(client.query.mock.calls.map(([sql]) => sql)).not.toContain('COMMIT');
+    expect(client.release).toHaveBeenCalledTimes(1);
+  });
+
   it('returns receipt details without changing the stored balance', async () => {
     const postgresService = {
       query: jest.fn((sql: string) => {

@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   Inject,
   Injectable,
   LoggerService,
@@ -244,53 +245,88 @@ export class BillingsService {
     userEmail,
     obs,
   }: DeleteBillingParams) {
-    const [billing] = await this.postgresService.query<BillingsTable>(
-      `SELECT * FROM billings WHERE id = $1`,
-      [id],
-    );
-    if (!billing || billing.account_id !== accountId) {
-      this.logger.log(
-        `Billing not found for accountId: ${accountId}, id: ${id}`,
-      );
-      throw new NotFoundException('Billing not found');
-    }
+    const client = await this.postgresService.getClient();
 
-    const transactions = await this.postgresService.query<TransactionTable>(
-      `SELECT t.id,t.client_id,t.client_name,t.description,t.payment_method,t.amount,t.quantity,t.payed_at FROM transactions t 
+    try {
+      await client.query('BEGIN');
+      const {
+        rows: [billing],
+      } = await client.query<BillingsTable>(
+        `SELECT * FROM billings WHERE id = $1 FOR UPDATE`,
+        [id],
+      );
+      if (!billing || billing.account_id !== accountId) {
+        this.logger.log(
+          `Billing not found for accountId: ${accountId}, id: ${id}`,
+        );
+        throw new NotFoundException('Billing not found');
+      }
+
+      const { rows: transactions } =
+        await client.query<TransactionTable>(
+          `SELECT t.id,t.client_id,t.client_name,t.description,t.payment_method,t.amount,t.quantity,t.payed_at FROM transactions t
            JOIN  billing_items b ON t.id = b.transaction_id
            WHERE b.billing_id = $1`,
-      [id],
-    );
-    const transactionIds = transactions.map((transaction) => transaction.id);
+          [id],
+        );
+      const transactionIds = transactions.map(
+        (transaction) => transaction.id,
+      );
 
-    this.logger.log(`Deleting transactions ${transactionIds.join(', ')}`);
-    await this.postgresService.query(
-      'DELETE FROM transactions WHERE id = ANY($1)',
-      [transactionIds],
-    );
-    this.logger.log(`Deleting billing items for billing ${id}`);
-    await this.postgresService.query(
-      'DELETE FROM billing_items WHERE billing_id = $1',
-      [id],
-    );
-    this.logger.log(`Deleting billing ${id}`);
-    await this.postgresService.query('DELETE FROM billings WHERE id = $1', [
-      id,
-    ]);
+      this.logger.log(`Deleting billing item reversals for billing ${id}`);
+      await client.query(
+        `DELETE FROM billing_items
+         WHERE billing_id = $1 AND reversal_of_item_id IS NOT NULL`,
+        [id],
+      );
+      this.logger.log(`Deleting billing items for billing ${id}`);
+      await client.query('DELETE FROM billing_items WHERE billing_id = $1', [
+        id,
+      ]);
 
-    await this.postgresService.query(
-      'INSERT INTO logs (id, account_id, user_id, user_name, user_email, data, log_type, obs) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-      [
-        this.guidProvider.generate(),
-        billing.account_id,
-        userId,
-        userName,
-        userEmail,
-        JSON.stringify(transactions),
-        'delete_billing',
-        obs,
-      ],
-    );
-    this.logger.log(`Inserting log for billing ${id} with user ${userId}`);
+      if (transactionIds.length) {
+        this.logger.log(`Deleting transactions ${transactionIds.join(', ')}`);
+        await client.query(
+          `DELETE FROM transactions
+           WHERE id = ANY($1)
+             AND NOT EXISTS (
+               SELECT 1 FROM billing_items
+               WHERE billing_items.transaction_id = transactions.id
+             )`,
+          [transactionIds],
+        );
+      }
+      this.logger.log(`Deleting billing ${id}`);
+      await client.query(
+        'DELETE FROM billings WHERE id = $1 AND account_id = $2',
+        [id, accountId],
+      );
+
+      await client.query(
+        'INSERT INTO logs (id, account_id, user_id, user_name, user_email, data, log_type, obs) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+        [
+          this.guidProvider.generate(),
+          billing.account_id,
+          userId,
+          userName,
+          userEmail,
+          JSON.stringify(transactions),
+          'delete_billing',
+          obs,
+        ],
+      );
+      this.logger.log(`Inserting log for billing ${id} with user ${userId}`);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      if (error?.code === '23503') {
+        throw new ConflictException(
+          'A fatura possui registros vinculados e nao pode ser excluida.',
+        );
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 }
