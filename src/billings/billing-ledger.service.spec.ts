@@ -875,6 +875,101 @@ describe('BillingLedgerService', () => {
     );
   });
 
+  it('reuses a credit-balance billing for a receivable sale without creating another billing', async () => {
+    const creditBilling = {
+      ...billing,
+      id: 'credit-billing-id',
+      amount: '0.00',
+      amount_payed: '36.00',
+      status: 'CREDIT_BALANCE',
+    };
+    const updatedBilling = {
+      ...creditBilling,
+      amount: '0.00',
+      amount_payed: '36.00',
+      status: 'CREDIT_BALANCE',
+    };
+    guidProvider.generate
+      .mockReset()
+      .mockReturnValueOnce('transaction-id')
+      .mockReturnValueOnce('billing-item-id')
+      .mockReturnValueOnce('log-id')
+      .mockReturnValue('generated-id');
+    client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [aClient] })
+      .mockResolvedValueOnce({ rows: [creditBilling] })
+      .mockResolvedValueOnce({ rows: [product] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [{ debit_total: '10.00', credit_total: '36.00' }],
+      })
+      .mockResolvedValueOnce({ rows: [updatedBilling] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const result = await service.addSale({
+      accountId: 'account-id',
+      clientId: 'client-id',
+      items: [{ productId: 'product-id', price: 10, quantity: 1 }],
+      userId: 'user-id',
+      userName: 'User Name',
+      userEmail: 'user@example.com',
+    });
+
+    expect(result).toMatchObject({
+      id: 'credit-billing-id',
+      status: 'CREDIT_BALANCE',
+      saleTransactionId: 'transaction-id',
+    });
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "status IN ('CREDIT_BALANCE', 'OPEN', 'PARTIAL')",
+      ),
+      ['account-id', 'client-id'],
+    );
+    const saleBillingLookup = client.query.mock.calls.find(([sql]) =>
+      sql.includes("status IN ('CREDIT_BALANCE', 'OPEN', 'PARTIAL')"),
+    );
+    expect(saleBillingLookup[0]).toContain(
+      "WHEN status = 'CREDIT_BALANCE' THEN 0",
+    );
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO billing_items'),
+      [
+        'billing-item-id',
+        'credit-billing-id',
+        'transaction-id',
+        'DEBIT',
+        expect.any(Date),
+      ],
+    );
+    expect(
+      client.query.mock.calls.some(([sql]) => sql.includes('INSERT INTO billings')),
+    ).toBe(false);
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE billings'),
+      [
+        0,
+        36,
+        'CREDIT_BALANCE',
+        expect.any(Date),
+        expect.any(Date),
+        'credit-billing-id',
+        'account-id',
+      ],
+    );
+    const saleLog = client.query.mock.calls.find(([sql]) =>
+      sql.includes('INSERT INTO logs'),
+    );
+    expect(saleLog[1][6]).toBe('billing_sale');
+    expect(JSON.parse(saleLog[1][5])).toMatchObject({
+      billingId: 'credit-billing-id',
+      before: { status: 'CREDIT_BALANCE' },
+      after: { status: 'CREDIT_BALANCE' },
+    });
+  });
+
   it('creates an active billing in the same transaction when sale client has none', async () => {
     guidProvider.generate
       .mockReset()

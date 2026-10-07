@@ -161,6 +161,33 @@ export class BillingLedgerService {
     return result.rows[0] || null;
   }
 
+  private async getBillingForNewSale(
+    { accountId, clientId }: ClientAccountInput,
+    client: Pick<PoolClient, 'query'>,
+  ): Promise<BillingsTable | null> {
+    const result = await client.query<BillingsTable>(
+      `
+        SELECT *
+        FROM billings
+        WHERE account_id = $1
+          AND client_id = $2
+          AND status IN ('CREDIT_BALANCE', 'OPEN', 'PARTIAL')
+        ORDER BY
+          CASE
+            WHEN status = 'CREDIT_BALANCE' THEN 0
+            WHEN status = 'PARTIAL' THEN 1
+            ELSE 2
+          END,
+          created_at ASC
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [accountId, clientId],
+    );
+
+    return result.rows[0] || null;
+  }
+
   async createBilling(
     input: CreateManagedBillingInput,
   ): Promise<BillingsTable> {
@@ -784,7 +811,7 @@ export class BillingLedgerService {
       client,
       true,
     );
-    const activeBilling = await this.getActiveBilling(
+    const activeBilling = await this.getBillingForNewSale(
       { accountId: input.accountId, clientId: input.clientId },
       client,
     );
