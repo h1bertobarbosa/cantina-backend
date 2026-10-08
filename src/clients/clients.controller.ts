@@ -18,6 +18,7 @@ import { QueryClientDto } from './dto/query-client.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
 import { CreateChargeDto } from './dto/create-charge-history.dto';
 import { QueryHistoryChargeDto } from './dto/query-history-charge.dto';
+import { ManageClientDependencyDto } from './dto/manage-client-dependency.dto';
 
 @ApiBearerAuth()
 @ApiTags('clients')
@@ -60,6 +61,46 @@ export class ClientsController {
   @Get(':id')
   findOne(@User() user: UserSession, @Param('id') id: string) {
     return this.clientsService.findOne({ id, accountId: user.accountId });
+  }
+
+  @Get(':id/dependencies')
+  findDependencyDetails(@User() user: UserSession, @Param('id') id: string) {
+    return this.clientsService.findDependencyDetails({
+      id,
+      accountId: user.accountId,
+    });
+  }
+
+  @Post(':id/dependents')
+  addDependent(
+    @User() user: UserSession,
+    @Param('id') id: string,
+    @Body() body: ManageClientDependencyDto,
+  ) {
+    return this.clientsService.addDependent({
+      accountId: user.accountId,
+      responsibleClientId: id,
+      dependentClientId: body.dependentClientId,
+      userId: user.sub,
+      userName: user.name,
+      userEmail: user.email,
+    });
+  }
+
+  @Delete(':id/dependents/:dependentId')
+  removeDependent(
+    @User() user: UserSession,
+    @Param('id') id: string,
+    @Param('dependentId') dependentId: string,
+  ) {
+    return this.clientsService.removeDependent({
+      accountId: user.accountId,
+      responsibleClientId: id,
+      dependentClientId: dependentId,
+      userId: user.sub,
+      userName: user.name,
+      userEmail: user.email,
+    });
   }
 
   @Put(':id')
