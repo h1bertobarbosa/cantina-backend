@@ -144,7 +144,7 @@ export class BillingsService {
         [id, accountId],
       ),
       this.postgresService.query<BillingItemsTable>(
-        `SELECT bi.id, bi.type, t.description, t.amount, bi.purchased_at
+        `SELECT bi.id, bi.type, t.client_id, t.client_name, t.description, t.amount, bi.purchased_at
      FROM billing_items bi
      JOIN transactions t ON t.id = bi.transaction_id
      WHERE bi.billing_id = $1 AND t.account_id = $2
@@ -164,6 +164,8 @@ export class BillingsService {
       },
       items: items.map((item) => ({
         id: item.id,
+        clientId: item.client_id,
+        clientName: item.client_name,
         description: item.description,
         type: item.type,
         amount: item.amount,
@@ -199,7 +201,7 @@ export class BillingsService {
   }
   async getBillingItems({ id, accountId }: InputGetById) {
     const items = await this.postgresService.query<BillingItemsTable>(
-      `SELECT bi.*,t.amount,t.client_name,t.description,t.payment_method,
+      `SELECT bi.*,t.amount,t.client_id,t.client_name,t.description,t.payment_method,
        (SELECT r.id FROM billing_items r WHERE r.reversal_of_item_id = bi.id) AS reversed_by_item_id
        FROM billing_items bi
        JOIN transactions t ON t.id = bi.transaction_id
@@ -262,16 +264,13 @@ export class BillingsService {
         throw new NotFoundException('Billing not found');
       }
 
-      const { rows: transactions } =
-        await client.query<TransactionTable>(
-          `SELECT t.id,t.client_id,t.client_name,t.description,t.payment_method,t.amount,t.quantity,t.payed_at FROM transactions t
+      const { rows: transactions } = await client.query<TransactionTable>(
+        `SELECT t.id,t.client_id,t.client_name,t.description,t.payment_method,t.amount,t.quantity,t.payed_at FROM transactions t
            JOIN  billing_items b ON t.id = b.transaction_id
            WHERE b.billing_id = $1`,
-          [id],
-        );
-      const transactionIds = transactions.map(
-        (transaction) => transaction.id,
+        [id],
       );
+      const transactionIds = transactions.map((transaction) => transaction.id);
 
       this.logger.log(`Deleting billing item reversals for billing ${id}`);
       await client.query(

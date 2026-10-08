@@ -132,6 +132,8 @@ describe('BillingsService', () => {
             {
               id: 'credit-item-id',
               type: 'CREDIT',
+              client_id: 'responsible-id',
+              client_name: 'Client Name',
               description: 'Crédito de R$ 72.00',
               amount: '72.00',
               purchased_at: new Date('2026-07-07T16:11:58.214Z'),
@@ -139,6 +141,8 @@ describe('BillingsService', () => {
             {
               id: 'debit-item-id',
               type: 'DEBIT',
+              client_id: 'dependent-id',
+              client_name: 'Dependent Name',
               description: '3 x R$ 24 - Produto',
               amount: '72.00',
               purchased_at: new Date('2026-06-06T12:00:00.000Z'),
@@ -163,10 +167,24 @@ describe('BillingsService', () => {
 
     expect(result.items[0]).toEqual(
       expect.objectContaining({
+        clientId: 'responsible-id',
+        clientName: 'Client Name',
         description: 'Crédito de R$ 72.00',
         type: 'CREDIT',
       }),
     );
+    expect(result.items[1]).toEqual(
+      expect.objectContaining({
+        clientId: 'dependent-id',
+        clientName: 'Dependent Name',
+        type: 'DEBIT',
+      }),
+    );
+    expect(result.client).toEqual({
+      name: 'Client Name',
+      email: 'client@example.com',
+      phone: '5551999999999',
+    });
     expect(
       postgresService.query.mock.calls.every(([sql]) =>
         sql.trim().startsWith('SELECT'),
@@ -194,12 +212,16 @@ describe('BillingsService', () => {
             id: 'original',
             type: 'DEBIT',
             amount: '100.00',
+            client_id: 'dependent-id',
+            client_name: 'Dependent Name',
             reversed_by_item_id: 'reversal',
           },
           {
             id: 'reversal',
             type: 'CREDIT',
             amount: '100.00',
+            client_id: 'dependent-id',
+            client_name: 'Dependent Name',
             reversal_of_item_id: 'original',
             reversal_reason: 'Duplicate',
             reversed_by_user_id: 'user',
@@ -227,8 +249,14 @@ describe('BillingsService', () => {
       creditBalance: 0,
       billing: { status: 'PARTIAL', amount: 99 },
     });
-    expect(result.items[0]).toMatchObject({ reversedByItemId: 'reversal' });
+    expect(result.items[0]).toMatchObject({
+      clientId: 'dependent-id',
+      clientName: 'Dependent Name',
+      reversedByItemId: 'reversal',
+    });
     expect(result.items[1]).toMatchObject({
+      clientId: 'dependent-id',
+      clientName: 'Dependent Name',
       reversalOfItemId: 'original',
       reversalReason: 'Duplicate',
       reversedByUserId: 'user',

@@ -3,6 +3,7 @@ import { BillingItemsTable } from '../repository/ports/billint-table.interface';
 export default class OutputBillingItemDto {
   private constructor(
     readonly id: string,
+    readonly clientId: string,
     readonly clientName: string,
     readonly description: string,
     readonly type: string,
@@ -24,6 +25,7 @@ export default class OutputBillingItemDto {
   ) {
     return new OutputBillingItemDto(
       billing.id,
+      billing.client_id,
       billing.client_name,
       billing.description,
       billing.type,

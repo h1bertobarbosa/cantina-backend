@@ -16,6 +16,7 @@ export interface BillingsTable {
 }
 interface TransactionsTable {
   amount: string;
+  client_id: string;
   client_name: string;
   description: string;
   payment_method: string;
