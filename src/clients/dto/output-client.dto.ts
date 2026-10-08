@@ -14,6 +14,8 @@ export class OutputClientDto {
   createdAt: Date;
   @ApiProperty()
   updatedAt: Date;
+  @ApiProperty({ required: false, nullable: true })
+  responsibleClientId: string | null;
 
   constructor(product: ClientTable) {
     this.id = product.id;
@@ -22,5 +24,6 @@ export class OutputClientDto {
     this.email = product.email;
     this.createdAt = product.created_at;
     this.updatedAt = product.updated_at;
+    this.responsibleClientId = product.responsible_client_id;
   }
 }

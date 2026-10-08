@@ -1,4 +1,11 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { PoolClient } from 'pg';
 import { CreateClientDto } from './dto/create-client.dto';
 // import { UpdateClientDto } from './dto/update-client.dto';
 import {
@@ -13,12 +20,32 @@ import { QueryHistoryChargeDto } from './dto/query-history-charge.dto';
 export interface ClientTable {
   id: string;
   account_id: string;
+  responsible_client_id: string | null;
   name: string;
   email: string;
   phone: string;
   created_at: Date;
   updated_at: Date;
 }
+
+interface ManageDependencyInput {
+  accountId: string;
+  responsibleClientId: string;
+  dependentClientId: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+}
+
+const CLIENT_ORDER_BY_COLUMNS: Record<string, string> = {
+  name: 'name',
+  email: 'email',
+  phone: 'phone',
+  createdAt: 'created_at',
+  created_at: 'created_at',
+  updatedAt: 'updated_at',
+  updated_at: 'updated_at',
+};
 export interface InputGetById {
   id: string;
   accountId: string;
@@ -65,7 +92,9 @@ export class ClientsService {
     const offsetIdx = params.length + 2;
 
     const whereClause = whereParts.join(' AND ');
-    const orderClause = `${input.sortBy} ${input.orderDir.toUpperCase()}`;
+    const safeOrderBy = CLIENT_ORDER_BY_COLUMNS[input.sortBy] || 'name';
+    const safeOrderDir = input.orderDir === 'desc' ? 'DESC' : 'ASC';
+    const orderClause = `${safeOrderBy} ${safeOrderDir}`;
 
     const query = `SELECT * FROM clients WHERE ${whereClause} ORDER BY ${orderClause} LIMIT $${limitIdx} OFFSET $${offsetIdx}`;
     params.push(input.perPage, (input.page - 1) * input.perPage);
@@ -98,6 +127,136 @@ export class ClientsService {
     return new OutputClientDto(client);
   }
 
+  async findDependencyDetails({ id, accountId }: InputGetById) {
+    const [client] = await this.postgresService.query<ClientTable>(
+      'SELECT * FROM clients WHERE id = $1',
+      [id],
+    );
+    if (!client || client.account_id !== accountId) {
+      throw new NotFoundException('Client not found');
+    }
+
+    const responsible = client.responsible_client_id
+      ? (
+          await this.postgresService.query<ClientTable>(
+            'SELECT * FROM clients WHERE id = $1 AND account_id = $2',
+            [client.responsible_client_id, accountId],
+          )
+        )[0]
+      : null;
+    const dependents = await this.postgresService.query<ClientTable>(
+      `SELECT * FROM clients
+       WHERE responsible_client_id = $1 AND account_id = $2
+       ORDER BY name ASC`,
+      [id, accountId],
+    );
+
+    return {
+      client: this.toSummary(client),
+      responsible: responsible ? this.toSummary(responsible) : null,
+      dependents: dependents.map((dependent) => this.toSummary(dependent)),
+    };
+  }
+
+  async addDependent(input: ManageDependencyInput) {
+    if (input.responsibleClientId === input.dependentClientId) {
+      throw new BadRequestException('Client cannot be responsible for itself');
+    }
+
+    return this.withTransaction(async (connection) => {
+      const dependent = await this.getClientForUpdate(
+        input.dependentClientId,
+        input.accountId,
+        connection,
+      );
+      const responsible = await this.getClientForUpdate(
+        input.responsibleClientId,
+        input.accountId,
+        connection,
+      );
+
+      if (dependent.responsible_client_id) {
+        throw new ConflictException('Client already has a responsible client');
+      }
+      if (responsible.responsible_client_id) {
+        throw new ConflictException('A dependent client cannot be responsible');
+      }
+
+      const dependentChildren = await connection.query<{ exists: boolean }>(
+        `SELECT EXISTS(
+           SELECT 1 FROM clients
+           WHERE account_id = $1 AND responsible_client_id = $2
+         ) AS exists`,
+        [input.accountId, dependent.id],
+      );
+      if (dependentChildren.rows[0]?.exists) {
+        throw new ConflictException(
+          'A responsible client cannot become a dependent',
+        );
+      }
+
+      const updated = await connection.query<ClientTable>(
+        `UPDATE clients
+         SET responsible_client_id = $1, updated_at = current_timestamp
+         WHERE id = $2 AND account_id = $3 AND responsible_client_id IS NULL
+         RETURNING *`,
+        [responsible.id, dependent.id, input.accountId],
+      );
+      if (!updated.rows[0]) {
+        throw new ConflictException('Client already has a responsible client');
+      }
+
+      await this.insertDependencyLog(
+        connection,
+        input,
+        'client_dependency_created',
+        responsible,
+        dependent,
+      );
+      return {
+        responsible: this.toSummary(responsible),
+        dependent: this.toSummary(dependent),
+      };
+    });
+  }
+
+  async removeDependent(input: ManageDependencyInput) {
+    return this.withTransaction(async (connection) => {
+      const dependent = await this.getClientForUpdate(
+        input.dependentClientId,
+        input.accountId,
+        connection,
+      );
+      const responsible = await this.getClientForUpdate(
+        input.responsibleClientId,
+        input.accountId,
+        connection,
+      );
+      const updated = await connection.query<ClientTable>(
+        `UPDATE clients
+         SET responsible_client_id = NULL, updated_at = current_timestamp
+         WHERE id = $1 AND responsible_client_id = $2 AND account_id = $3
+         RETURNING *`,
+        [dependent.id, responsible.id, input.accountId],
+      );
+      if (!updated.rows[0]) {
+        throw new NotFoundException('Client dependency not found');
+      }
+
+      await this.insertDependencyLog(
+        connection,
+        input,
+        'client_dependency_removed',
+        responsible,
+        dependent,
+      );
+      return {
+        responsible: this.toSummary(responsible),
+        dependent: this.toSummary(dependent),
+      };
+    });
+  }
+
   async update(updateProductDto: UpdateClientDto) {
     const row = await this.postgresService.query<ClientTable>(
       `UPDATE clients SET name = $1, phone = $2, updated_at = $3, email = $4 WHERE id = $5 AND account_id = $6 RETURNING *`,
@@ -113,10 +272,96 @@ export class ClientsService {
     return new OutputClientDto(row[0]);
   }
   async remove({ id, accountId }: InputGetById) {
-    await this.postgresService.query<ClientTable>(
-      `DELETE FROM clients WHERE id = $1 AND account_id = $2`,
+    const [client] = await this.postgresService.query<ClientTable>(
+      'SELECT * FROM clients WHERE id = $1',
+      [id],
+    );
+    if (!client || client.account_id !== accountId) {
+      throw new NotFoundException('Client not found');
+    }
+    const [relationship] = await this.postgresService.query<{
+      exists: boolean;
+    }>(
+      `SELECT EXISTS(
+         SELECT 1 FROM clients
+         WHERE account_id = $1
+           AND (id = $2 AND responsible_client_id IS NOT NULL OR responsible_client_id = $2)
+       ) AS exists`,
+      [accountId, id],
+    );
+    if (relationship?.exists) {
+      throw new ConflictException(
+        'Remove the client dependency before deleting this client',
+      );
+    }
+    await this.postgresService.query(
+      'DELETE FROM clients WHERE id = $1 AND account_id = $2',
       [id, accountId],
     );
+  }
+
+  private async withTransaction<T>(
+    operation: (connection: PoolClient) => Promise<T>,
+  ): Promise<T> {
+    const connection = await this.postgresService.getClient();
+    try {
+      await connection.query('BEGIN');
+      const result = await operation(connection);
+      await connection.query('COMMIT');
+      return result;
+    } catch (error) {
+      await connection.query('ROLLBACK');
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  private async getClientForUpdate(
+    id: string,
+    accountId: string,
+    connection: Pick<PoolClient, 'query'>,
+  ): Promise<ClientTable> {
+    const result = await connection.query<ClientTable>(
+      'SELECT * FROM clients WHERE id = $1 FOR UPDATE',
+      [id],
+    );
+    const client = result.rows[0];
+    if (!client || client.account_id !== accountId) {
+      throw new NotFoundException('Client not found');
+    }
+    return client;
+  }
+
+  private async insertDependencyLog(
+    connection: Pick<PoolClient, 'query'>,
+    input: ManageDependencyInput,
+    logType: 'client_dependency_created' | 'client_dependency_removed',
+    responsible: ClientTable,
+    dependent: ClientTable,
+  ) {
+    await connection.query(
+      `INSERT INTO logs (
+         id, account_id, user_id, user_name, user_email, data, log_type, obs
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        this.guidProvider.generate(),
+        input.accountId,
+        input.userId,
+        input.userName,
+        input.userEmail,
+        JSON.stringify({
+          responsible: this.toSummary(responsible),
+          dependent: this.toSummary(dependent),
+        }),
+        logType,
+        null,
+      ],
+    );
+  }
+
+  private toSummary(client: Pick<ClientTable, 'id' | 'name'>) {
+    return { id: client.id, name: client.name };
   }
 
   async registerCharge(input: {
