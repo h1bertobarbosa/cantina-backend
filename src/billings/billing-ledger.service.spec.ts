@@ -875,6 +875,106 @@ describe('BillingLedgerService', () => {
     );
   });
 
+  it('bills a dependent sale to the responsible while preserving the consumer', async () => {
+    const dependentClient = {
+      ...aClient,
+      id: 'dependent-id',
+      name: 'Dependent Name',
+      responsible_client_id: 'responsible-id',
+    };
+    const responsibleClient = {
+      ...aClient,
+      id: 'responsible-id',
+      name: 'Responsible Name',
+      responsible_client_id: null,
+    };
+    const responsibleBilling = {
+      ...billing,
+      id: 'responsible-billing-id',
+      client_id: 'responsible-id',
+    };
+    guidProvider.generate
+      .mockReset()
+      .mockReturnValueOnce('dependent-transaction-id')
+      .mockReturnValueOnce('dependent-item-id')
+      .mockReturnValueOnce('log-id');
+    client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [dependentClient] })
+      .mockResolvedValueOnce({ rows: [responsibleClient] })
+      .mockResolvedValueOnce({ rows: [responsibleBilling] })
+      .mockResolvedValueOnce({ rows: [product] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [{ debit_total: '20.00', credit_total: '0.00' }],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ ...responsibleBilling, amount: '20.00' }],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await service.addSale({
+      accountId: 'account-id',
+      clientId: 'dependent-id',
+      items: [{ productId: 'product-id', price: 10, quantity: 2 }],
+      userId: 'user-id',
+      userName: 'User Name',
+      userEmail: 'user@example.com',
+    });
+
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "status IN ('CREDIT_BALANCE', 'OPEN', 'PARTIAL')",
+      ),
+      ['account-id', 'responsible-id'],
+    );
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO transactions'),
+      [
+        'dependent-transaction-id',
+        'account-id',
+        'dependent-id',
+        'product-id',
+        'Dependent Name',
+        '2 x R$ 10 - Acai',
+        'TO_RECEIVE',
+        20,
+        2,
+      ],
+    );
+    expect(client.query).toHaveBeenLastCalledWith('COMMIT');
+  });
+
+  it('rejects a consumer outside the financial owner invoice', async () => {
+    client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [billing] })
+      .mockResolvedValueOnce({
+        rows: [{ ...aClient, id: 'outsider-id', responsible_client_id: null }],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await expect(
+      service.addSale({
+        accountId: 'account-id',
+        billingId: 'billing-id',
+        clientId: 'outsider-id',
+        items: [{ productId: 'product-id', price: 10, quantity: 1 }],
+        userId: 'user-id',
+        userName: 'User Name',
+        userEmail: 'user@example.com',
+      }),
+    ).rejects.toThrow('Consumer does not belong to the billing owner');
+    expect(client.query).toHaveBeenLastCalledWith('ROLLBACK');
+    expect(
+      client.query.mock.calls.some(([sql]) =>
+        sql.includes('INSERT INTO transactions'),
+      ),
+    ).toBe(false);
+  });
+
   it('reuses a credit-balance billing for a receivable sale without creating another billing', async () => {
     const creditBilling = {
       ...billing,

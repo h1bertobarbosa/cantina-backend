@@ -91,6 +91,7 @@ export interface ReverseBillingItemInput {
 interface ClientRow {
   id: string;
   account_id: string;
+  responsible_client_id: string | null;
   name: string;
 }
 
@@ -431,7 +432,7 @@ export class BillingLedgerService {
     });
 
     return this.withTransaction(async (client) => {
-      const { billing, clientName } = await this.resolveSaleBilling(
+      const { billing, consumer } = await this.resolveSaleBilling(
         input,
         client,
       );
@@ -470,9 +471,9 @@ export class BillingLedgerService {
           [
             transactionId,
             input.accountId,
-            billing.client_id,
+            consumer.id,
             product.getId(),
-            clientName,
+            consumer.name,
             CreateTransactionDescription.execute(product, quantity),
             'TO_RECEIVE',
             price * quantity,
@@ -785,51 +786,66 @@ export class BillingLedgerService {
   private async resolveSaleBilling(
     input: AddBillingSaleInput,
     client: PoolClient,
-  ): Promise<{ billing: BillingsTable; clientName: string }> {
+  ): Promise<{ billing: BillingsTable; consumer: ClientRow }> {
     if (input.billingId) {
       const billing = await this.getBillingForUpdate(
         input.billingId,
         input.accountId,
         client,
       );
-      const aClient = await this.getClient(
-        billing.client_id,
+      const consumer = await this.getClient(
+        input.clientId || billing.client_id,
         input.accountId,
         client,
+        true,
       );
+      const financialOwnerId = consumer.responsible_client_id || consumer.id;
+      if (financialOwnerId !== billing.client_id) {
+        throw new BadRequestException(
+          'Consumer does not belong to the billing owner',
+        );
+      }
 
-      return { billing, clientName: aClient.name };
+      return { billing, consumer };
     }
 
     if (!input.clientId) {
       throw new BadRequestException('Client is required for sale billing');
     }
 
-    const aClient = await this.getClient(
+    const consumer = await this.getClient(
       input.clientId,
       input.accountId,
       client,
       true,
     );
+    const financialOwner = consumer.responsible_client_id
+      ? await this.getClient(
+          consumer.responsible_client_id,
+          input.accountId,
+          client,
+          true,
+        )
+      : consumer;
     const activeBilling = await this.getBillingForNewSale(
-      { accountId: input.accountId, clientId: input.clientId },
+      { accountId: input.accountId, clientId: financialOwner.id },
       client,
     );
 
     if (activeBilling) {
-      return { billing: activeBilling, clientName: aClient.name };
+      return { billing: activeBilling, consumer };
     }
 
     const billing = await this.createEmptyBilling(
       {
         accountId: input.accountId,
-        clientId: input.clientId,
+        clientId: financialOwner.id,
         description: `Fatura mes: ${new Date().getMonth()}/${new Date().getFullYear()}`,
       },
       client,
     );
 
-    return { billing, clientName: aClient.name };
+    return { billing, consumer };
   }
 
   private async createEmptyBilling(
@@ -898,7 +914,7 @@ export class BillingLedgerService {
     const [aClient] = await this.queryRows<ClientRow>(
       client,
       `
-        SELECT id, account_id, name
+        SELECT id, account_id, responsible_client_id, name
         FROM clients
         WHERE id = $1
         ${lock ? 'FOR UPDATE' : ''}

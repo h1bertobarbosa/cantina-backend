@@ -93,6 +93,7 @@ export class BillingsController {
     return this.ledgerService.addSale({
       items: body.items,
       buyDate: body.buyDate,
+      clientId: body.clientId,
       accountId: user.accountId,
       billingId: id,
       userId: user.sub,

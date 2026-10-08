@@ -93,7 +93,7 @@ describe('BillingsController management', () => {
     },
   );
 
-  it('adds a sale without accepting client overrides', async () => {
+  it('adds a sale for the selected invoice consumer', async () => {
     const body = {
       items: [{ productId: 'product', price: 5, quantity: 2 }],
       buyDate: '2026-10-06',
@@ -103,6 +103,7 @@ describe('BillingsController management', () => {
     expect(ledger.addSale).toHaveBeenCalledWith({
       items: body.items,
       buyDate: body.buyDate,
+      clientId: body.clientId,
       ...identity,
     });
   });

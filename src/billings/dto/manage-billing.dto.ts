@@ -106,6 +106,12 @@ export class AddBillingSaleDto {
   @IsOptional()
   @IsDateString()
   buyDate?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  clientId?: string;
 }
 
 export class ReverseBillingItemDto {
