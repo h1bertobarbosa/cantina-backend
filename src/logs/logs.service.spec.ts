@@ -141,9 +141,9 @@ describe('LogsService', () => {
   });
 
   it('denies account list for users different from the authorized audit email', async () => {
-    await expect(service.findAccounts('other@example.com')).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(
+      service.findAccounts('other@example.com'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
 
     expect(postgresService.query).not.toHaveBeenCalled();
   });

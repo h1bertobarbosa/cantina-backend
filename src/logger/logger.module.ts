@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
-import { WinstonLogger } from './adapters/winston-logger';
+import { PinoLogger } from './adapters/pino-logger';
 import { LOGGER } from './logger.const';
 
-const provider = { provide: LOGGER, useClass: WinstonLogger };
+const provider = { provide: LOGGER, useClass: PinoLogger };
 @Module({
   providers: [provider],
   exports: [provider],

@@ -1,43 +1,33 @@
-# Etapa 1: Construção da aplicação
-FROM node:22-slim AS builder
+# syntax=docker/dockerfile:1
 
-# Define o diretório de trabalho dentro do container
+# ===== BUILD =====
+FROM node:24-slim AS builder
+
 WORKDIR /app
 
-# Copia o package.json e package-lock.json (se existir)
-COPY package*.json ./
+COPY package.json package-lock.json ./
 
-# Instala as dependências de desenvolvimento para compilar a aplicação
-RUN npm install
+RUN npm ci
 
-# Copia o restante dos arquivos da aplicação
 COPY . .
 
-# Compila o projeto NestJS
 RUN npm run build
 
-# Instala apenas as dependências de produção
-RUN npm install --omit=dev
-# Etapa 2: Container final
-FROM gcr.io/distroless/nodejs22-debian12 AS runner
+RUN npm prune --omit=dev
 
-# Define o diretório de trabalho dentro do container
+# ===== RUNTIME =====
+FROM gcr.io/distroless/nodejs24-debian13:nonroot AS runner
+
 WORKDIR /app
 
-# Copia as dependências de produção da etapa anterior
-COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder --chown=65532:65532 \
+    /app/node_modules ./node_modules
 
-# Copia a build gerada na etapa anterior
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/.env.prd ./dist/.env
-COPY --from=builder /app/.env.prd .env
+COPY --from=builder --chown=65532:65532 \
+    /app/dist ./dist
 
-# Define a variável de ambiente para produção
 ENV NODE_ENV=production
 
-# Expõe a porta que a aplicação vai usar
 EXPOSE 3000
 
-# Comando para iniciar a aplicação
 CMD ["dist/main"]
-

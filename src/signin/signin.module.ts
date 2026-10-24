@@ -3,16 +3,15 @@ import { SigninService } from './signin.service';
 import { SigninController } from './signin.controller';
 import { JwtModule } from '@nestjs/jwt';
 import { LibsModule } from 'src/libs/libs.module';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { AuthGuard } from './auth.guard';
 @Module({
   imports: [
     LibsModule,
     JwtModule.registerAsync({
-      imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET'),
+        secret: configService.get<string>('jwt.secret'),
       }),
       inject: [ConfigService],
     }),

@@ -23,7 +23,7 @@ import { LogsModule } from './logs/logs.module';
       isGlobal: true,
       load: [jwtConfig, pgConfig],
     }),
-    PostgresModule.forRoot(pgConfig()),
+    PostgresModule.forRootAsync(),
     SigninModule,
     SignupModule,
     ProductsModule,

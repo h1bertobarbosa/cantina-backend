@@ -60,7 +60,8 @@ export class ProductsService {
     const safeOrderBy =
       PRODUCT_ORDER_BY_COLUMNS[input.orderBy || 'name'] ||
       PRODUCT_ORDER_BY_COLUMNS.name;
-    const safeOrderDir = input.orderDir?.toLowerCase() === 'desc' ? 'DESC' : 'ASC';
+    const safeOrderDir =
+      input.orderDir?.toLowerCase() === 'desc' ? 'DESC' : 'ASC';
     const limitIdx = params.length + 1;
     const offsetIdx = params.length + 2;
     const whereClause = whereParts.join(' AND ');
